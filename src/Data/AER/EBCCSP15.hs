@@ -109,13 +109,13 @@ instance Entity Gabors Score SpikeTrain Bounds IO where
 
 
 genRandomGabor :: (Applicative m, MonadRandom m) => Bounds -> m Gabor3d
-genRandomGabor (minT,maxT) = Gabor3d <$> getRandom
-                                     <*> getRandom
-                                     <*> getRandom
-                                     <*> getRandom
-                                     <*> getRandom
-                                     <*> getRandom
-                                     <*> getRandom
+genRandomGabor (minT,maxT) = Gabor3d <$> getRandomR (-1,1)
+                                     <*> getRandomR (-1,1)
+                                     <*> getRandomR (-1,1)
+                                     <*> getRandomR (-1,1)
+                                     <*> getRandomR (-1,1)
+                                     <*> getRandomR (-1,1)
+                                     <*> getRandomR (-1,1)
                                      <*> getRandomR (toSeconds minT, toSeconds maxT)
                                      <*> getRandomR (0,128)
                                      <*> getRandomR (0,128)
@@ -138,13 +138,13 @@ crossoverGabors as bs = do
 --mutationGabor :: (Applicative m, MonadRandom m) => Gabor3d -> m Gabor3d
 mutationGabor (minT,maxT) a = do
     {-traceM $ "mutate gabor: " ++ show a-}
-    rα <- getRandom
-    rλ <- getRandom
-    rθ <- getRandom
-    rψ <- getRandom
-    rσ <- getRandom
-    rγ <- getRandom
-    rμ <- getRandom
+    rα <- getRandomR (-1,1)
+    rλ <- getRandomR (-1,1)
+    rθ <- getRandomR (-1,1)
+    rψ <- getRandomR (-1,1)
+    rσ <- getRandomR (-1,1)
+    rγ <- getRandomR (-1,1)
+    rμ <- getRandomR (-1,1)
     rot <- getRandomR (toSeconds minT, toSeconds maxT)
     rox <- getRandomR (0,128)
     roy <- getRandomR (0,128)
