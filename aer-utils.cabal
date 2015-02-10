@@ -47,7 +47,7 @@ executable learngabors
                        dtw,
                        GA,
                        vector,
-                       ekg,
+                       ekg, ekg-core,
                        parallel
   main-is:             Data/AER/EBCCSP15.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fllvm -optlo-O2 -optlo-memdep

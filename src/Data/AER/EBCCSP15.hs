@@ -19,6 +19,9 @@ import           Data.Function
 import           Data.DTW
 import           Data.Bits
 import           Data.Complex
+import           Data.IORef
+import           Data.Traversable
+import           Data.Foldable
 
 import           Data.Thyme.Clock
 
@@ -26,15 +29,19 @@ import qualified Data.Vector.Unboxed as V
 
 import           Control.Applicative
 import           Control.Monad.Random
-import           Control.Monad
+import           Control.Monad hiding (forM_,mapM,mapM_)
 import           Control.Parallel.Strategies
 
 
 import           System.Random
+import           System.IO.Unsafe
+
 import           System.Remote.Monitoring
+import qualified System.Metrics.Distribution as Dist
 
 import           Debug.Trace
 
+import           Prelude hiding (forM_,mapM,mapM_,sum)
 
 -- create type for gabor filter + factor
 
@@ -202,6 +209,9 @@ scoreGabor aer gs  = do
     let c = cost $ fastDtw eventSqDistance halfSpikeTrain 2 aer synthST
 
     {-traceM $ "score: " ++ show c-}
+    -- update fitness distribution
+    fitnessD <- readIORef globalFitnessIORef
+    forM_ fitnessD $ \d -> Dist.add d c
 
     return c
 
@@ -212,10 +222,17 @@ scoreGabors spikes gs = do
     let parGabors = scoreGabors `using` parList rdeepseq
     return $ Just (map Just parGabors)
 
+
+globalFitnessIORef :: IORef (Maybe Dist.Distribution)
+globalFitnessIORef = unsafePerformIO $ newIORef Nothing
+
 main :: IO ()
 main = do
 
-    _ <- forkServer "localhost" 8888
+    server <- forkServer "localhost" 8888
+    fitnessDist <- getDistribution "gabors.score" server
+
+    writeIORef globalFitnessIORef $ Just fitnessDist
 
     let c = GAConfig 100 10 1000 0.8 0.2 0 0 True False
 
