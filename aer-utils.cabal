@@ -52,7 +52,7 @@ executable learngabors
   main-is:             Data/AER/EBCCSP15.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fllvm -optlo-O2 -optlo-memdep
                        -optlo-loop-unroll -optlo-mem2reg -optlo-scalarrepl
-                       -threaded
+                       -threaded -rtsopts
                        ---fprof-auto -prof
                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
