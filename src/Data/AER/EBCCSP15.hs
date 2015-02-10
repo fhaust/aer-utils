@@ -163,7 +163,10 @@ mutationGabor (minT,maxT) a = do
 
     uniform [a,ma]
 
-mutationGabors pool = mapM (mutationGabor pool)
+mutationGabors pool gs = do
+    mutated <- mapM (mutationGabor pool) gs
+    spawned <- genRandomGabor pool
+    uniform [mutated, spawned : mutated]
 
 -----------------------------------------------------------------------------
 
