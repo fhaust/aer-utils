@@ -1,0 +1,8 @@
+.cabal-sandbox
+dist
+cabal.sandbox.config
+*.aux
+*.hp
+*.prof
+*.ps
+checkpoints
