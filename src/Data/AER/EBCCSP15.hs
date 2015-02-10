@@ -85,11 +85,12 @@ type Gabors = [Gabor3d]
 type SpikeTrain = V.Vector (DVS.Event DVS.Address)
 
 type Score = Double
+type Bounds = (NominalDiffTime,NominalDiffTime)
 
 -- create Entity instance for 3d gabor kernels
 
-instance Entity Gabors Score SpikeTrain () IO where
-    genRandom _ seed = return $ evalRand (genRandomGabors 10) (mkStdGen seed)
+instance Entity Gabors Score SpikeTrain Bounds IO where
+    genRandom pool seed = return $ evalRand (genRandomGabors pool 10) (mkStdGen seed)
     crossover _ param seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
     mutation  _ param seed a = return $ evalRand (Just <$> mutationGabors a) (mkStdGen seed)
     --score     spikes gabors  = Just <$> scoreGabor spikes gabors
@@ -100,20 +101,20 @@ instance Entity Gabors Score SpikeTrain () IO where
 -- implementations
 
 
-genRandomGabor :: (Applicative m, MonadRandom m) => m Gabor3d
-genRandomGabor = Gabor3d <$> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
-                         <*> getRandom
+genRandomGabor :: (Applicative m, MonadRandom m) => Bounds -> m Gabor3d
+genRandomGabor (minT,maxT) = Gabor3d <$> getRandom
+                                     <*> getRandom
+                                     <*> getRandom
+                                     <*> getRandom
+                                     <*> getRandom
+                                     <*> getRandom
+                                     <*> getRandom
+                                     <*> getRandomR (toSeconds minT, toSeconds maxT)
+                                     <*> getRandomR (0,128)
+                                     <*> getRandomR (0,128)
+                                     <*> getRandomR (0,1)
 
-genRandomGabors n = replicateM n genRandomGabor
+genRandomGabors p n = replicateM n (genRandomGabor p)
 
 --crossoverGabor a b = Gabor3d <$> uniform [α a, α b]
 --                             <*> uniform [λ a, λ b]
@@ -129,7 +130,7 @@ crossoverGabors as bs = do
 
 --mutationGabor :: (Applicative m, MonadRandom m) => Gabor3d -> m Gabor3d
 mutationGabor a = do
-    traceM $ "mutate gabor: " ++ show a
+    {-traceM $ "mutate gabor: " ++ show a-}
     rα <- getRandom
     rλ <- getRandom
     rθ <- getRandom
@@ -183,8 +184,8 @@ halfSpikeTrain spikes = V.generate (V.length spikes `quot` 2) (\i -> go (spikes 
 
 scoreGabor :: SpikeTrain -> Gabors -> IO Double
 scoreGabor aer gs  = do
-    traceM $ "score gabor: " ++ show gs
-    traceM $ "spikes count: " ++ show (V.length aer)
+    {-traceM $ "score gabor: " ++ show gs-}
+    {-traceM $ "spikes count: " ++ show (V.length aer)-}
 
     let headTS = DVS.timestamp $ V.head aer
         lastTS = DVS.timestamp $ V.last aer
@@ -194,13 +195,13 @@ scoreGabor aer gs  = do
 
     -- 2. synthesize spiketrain from gs
     synthST' <- synthesize (V.length aer) (headTS,lastTS) distFun
-    traceM $ "synth length: " ++ show (length synthST')
+    {-traceM $ "synth length: " ++ show (length synthST')-}
     let synthST = V.fromListN (V.length aer) synthST'
 
     -- 3. use dtw to calculate error
     let c = cost $ fastDtw eventSqDistance halfSpikeTrain 2 aer synthST
 
-    traceM $ "score: " ++ show c
+    {-traceM $ "score: " ++ show c-}
 
     return c
 
@@ -214,14 +215,18 @@ scoreGabors spikes gs = do
 main :: IO ()
 main = do
 
-    server <- forkServer "localhost" 8888
+    _ <- forkServer "localhost" 8888
 
-    let c = GAConfig 1 10 5 0.8 0.2 0 0 True False
+    let c = GAConfig 100 10 1000 0.8 0.2 0 0 True False
 
-    g <- getStdGen
+    {-g <- getStdGen-}
+    let g = mkStdGen 0
     (Right aer) <- fmap V.fromList <$> DVS.readDVSData "../aer/data/DVS128-2014-10-21T17-41-53+0200-20000-0.aedat"
 
-    archive <- evolveVerbose g c () aer :: IO (Archive [Gabor3d] Double)
+    let headT = DVS.timestamp $ V.head aer
+        lastT = DVS.timestamp $ V.last aer
+
+    archive <- evolveVerbose g c (headT,lastT) aer :: IO (Archive [Gabor3d] Double)
 
     print archive
 
