@@ -92,7 +92,7 @@ type Bounds = (NominalDiffTime,NominalDiffTime)
 instance Entity Gabors Score SpikeTrain Bounds IO where
     genRandom pool seed = return $ evalRand (genRandomGabors pool 10) (mkStdGen seed)
     crossover _ param seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
-    mutation  _ param seed a = return $ evalRand (Just <$> mutationGabors a) (mkStdGen seed)
+    mutation  pool param seed a = return $ evalRand (Just <$> mutationGabors pool a) (mkStdGen seed)
     --score     spikes gabors  = Just <$> scoreGabor spikes gabors
     scorePop spikes _ gs = scoreGabors spikes gs
 
@@ -129,7 +129,7 @@ crossoverGabors as bs = do
     return $ take n as ++ drop n bs
 
 --mutationGabor :: (Applicative m, MonadRandom m) => Gabor3d -> m Gabor3d
-mutationGabor a = do
+mutationGabor (minT,maxT) a = do
     {-traceM $ "mutate gabor: " ++ show a-}
     rα <- getRandom
     rλ <- getRandom
@@ -138,10 +138,10 @@ mutationGabor a = do
     rσ <- getRandom
     rγ <- getRandom
     rμ <- getRandom
-    rot <- getRandom
-    rox <- getRandom
-    roy <- getRandom
-    rop <- getRandom
+    rot <- getRandomR (toSeconds minT, toSeconds maxT)
+    rox <- getRandomR (0,128)
+    roy <- getRandomR (0,128)
+    rop <- getRandomR (0,1)
     ma <- Gabor3d <$> uniform [α a, α a + rα]
                   <*> uniform [λ a, λ a + rλ]
                   <*> uniform [θ a, θ a + rθ]
@@ -149,14 +149,14 @@ mutationGabor a = do
                   <*> uniform [σ a, σ a + rσ]
                   <*> uniform [γ a, γ a + rγ]
                   <*> uniform [μ a, μ a + rμ]
-                  <*> uniform [ot a, ot a + rot]
-                  <*> uniform [ox a, ox a + rox]
-                  <*> uniform [oy a, oy a + roy]
-                  <*> uniform [op a, op a + rop]
+                  <*> uniform [ot a, rot]
+                  <*> uniform [ox a, rox]
+                  <*> uniform [oy a, roy]
+                  <*> uniform [op a, rop]
 
     uniform [a,ma]
 
-mutationGabors = mapM mutationGabor
+mutationGabors pool = mapM (mutationGabor pool)
 
 -----------------------------------------------------------------------------
 
