@@ -12,6 +12,15 @@ import System.Random
 import Data.Word
 
 -- | this is the gabor function
+gabor :: RealFloat a 
+      => a  -- ^ wavelength of underlying sines
+      -> a  -- ^ orientation of underlying sines
+      -> a  -- ^ offset/shift of underlying sines
+      -> a  -- ^ size/radius of the gauss bell
+      -> a  -- ^ compression/ratio of the gauss bell
+      -> a  -- ^ x - position
+      -> a  -- ^ y - position
+      -> Complex a
 gabor λ θ ψ σ γ x y = exp ( (-0.5) * ((x'^2 + γ^2*y'^2) / (σ^2)) :+ 0) * exp ( 0 :+ (2*pi*(x'/λ+ψ)) )
     where x' =  x * cos θ + y * sin θ
           y' = -x * sin θ + y * cos θ

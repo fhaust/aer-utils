@@ -48,11 +48,14 @@ executable learngabors
                        GA,
                        vector,
                        ekg, ekg-core,
-                       parallel
-  main-is:             Data/AER/EBCCSP15.hs
-  ghc-options:         -O2 -Wall -funbox-strict-fields -fllvm -optlo-O2 -optlo-memdep
-                       -optlo-loop-unroll -optlo-mem2reg -optlo-scalarrepl
-                       -threaded -rtsopts
+                       parallel,
+                       JuicyPixels
+  main-is:             Data/AER/EBCCSP15-2.hs
+  ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
+                       -fllvm -optlo-O3
+                       -threaded 
+                       -rtsopts 
+                       -eventlog
                        ---fprof-auto -prof
                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src

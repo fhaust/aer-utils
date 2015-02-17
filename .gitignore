@@ -6,3 +6,4 @@ cabal.sandbox.config
 *.prof
 *.ps
 checkpoints
+*.eventlog
