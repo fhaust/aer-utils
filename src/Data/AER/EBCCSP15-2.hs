@@ -134,7 +134,7 @@ main = do
         }
 
   -- read in chessboard dataset
-  (Right chessboard) <- fmap V.fromList <$> DVS.readDVSData "/home/florian/Dokumente/Studium/NE/master/haskell/aer/data/chessboard.aedat"
+  (Right chessboard) <- fmap V.fromList <$> DVS.readDVSData "../aer/data/chessboard.aedat"
 
   -- run the ga
   result <- evolveVerbose (mkStdGen 1337) gaConfig () chessboard :: IO (Archive Gabor Score)
