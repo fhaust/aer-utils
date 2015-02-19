@@ -54,11 +54,11 @@ type    Pool   = ()
 
 -- | generate a single random gabor filter
 genRandomGabor :: (Applicative m, MonadRandom m) => m Gabor
-genRandomGabor = mkGabor <$> getRandomR (0,128)    -- wavelength
+genRandomGabor = mkGabor <$> pure 3                -- wavelength
                          <*> getRandomR (-pi,pi)   -- orientation
-                         <*> getRandomR (0,1)      -- phase
-                         <*> getRandomR (0,64)     -- size
-                         <*> getRandomR (0,10)     -- compression
+                         <*> getRandomR (0,pi/2)   -- phase
+                         <*> pure 1                -- size (clamp to 0-2)
+                         <*> pure 1                -- compression
                          <*> getRandomR (0,128)    -- offset x
                          <*> getRandomR (0,128)    -- offset y
 
@@ -74,15 +74,17 @@ crossoverGabors (Gabor (aλ,aθ,aψ,aσ,aγ,aox,aoy)) (Gabor (bλ,bθ,bψ,bσ,b�
                        <*> uniform [aox,box]
                        <*> uniform [aoy,boy]
 
+clamp mi ma x = max mi (min ma x)
+
 -- | mutate one gabor filter
 mutateGabor :: (Applicative m, MonadRandom m) => Gabor -> m Gabor
-mutateGabor (Gabor (λ,θ,ψ,σ,γ,ox,oy) ) = mkGabor <$> uniform [0.9*λ,λ,1.1*λ]
-                                                 <*> uniform [0.9*θ,θ,1.1*θ]
-                                                 <*> uniform [0.9*ψ,ψ,1.1*ψ] 
-                                                 <*> uniform [0.9*σ,σ,1.1*σ]
-                                                 <*> uniform [0.9*γ,γ,1.1*γ]
-                                                 <*> uniform [0.9*ox,ox,1.1*ox]
-                                                 <*> uniform [0.9*oy,oy,1.1*oy]
+mutateGabor (Gabor (λ,θ,ψ,σ,γ,ox,oy) ) = mkGabor <$> pure 3
+                                                 <*> (clamp (-pi) pi <$> uniform [0.9*θ,θ,1.1*θ])
+                                                 <*> (clamp 0 (pi/2) <$> uniform [0.9*ψ,ψ,1.1*ψ])
+                                                 <*> pure 1
+                                                 <*> pure 1
+                                                 <*> (clamp 0 128 <$> uniform [0.9*ox,ox,1.1*ox])
+                                                 <*> (clamp 0 128 <$> uniform [0.9*oy,oy,1.1*oy])
 
 newtype ListSum a = ListSum { unListSum :: [a] } deriving (Show,Read,Eq,Ord)
 
@@ -105,11 +107,11 @@ scoreGaborPop es gs = parMap rseq (scoreGabor es) gs
 
 -- define an instance of Entitiy for Gabor filters over AER streams
 instance Entity Gabor Score Events Pool IO where
-    genRandom pool seed           = return $ evalRand genRandomGabor (mkStdGen seed)
-    crossover pool param seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
-    mutation  pool param seed g   = return $ evalRand (Just <$> mutateGabor g) (mkStdGen seed) 
-    scorePop  es universe pop     = return . Just . map Just $ scoreGaborPop es pop
-    {-score' events gabor           = Just $ scoreGabor events gabor-}
+    genRandom pool seed       = return $ evalRand genRandomGabor (mkStdGen seed)
+    crossover pool _ seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
+    mutation  pool _ seed g   = return $ evalRand (Just <$> mutateGabor g) (mkStdGen seed) 
+    scorePop  es _ pop        = return . Just . map Just $ scoreGaborPop es pop
+    {-score' events gabor       = Just $ scoreGabor events gabor-}
 
 
 
@@ -118,13 +120,13 @@ main :: IO ()
 main = do
 
   -- get a random number generator
-  let gen = mkStdGen 1337
+  {-let gen = mkStdGen 1337-}
 
   -- ga configuration
   let gaConfig = GAConfig
-        { getPopSize        = 10000
-        , getArchiveSize    = 10
-        , getMaxGenerations = 10
+        { getPopSize        = 100
+        , getArchiveSize    = 1
+        , getMaxGenerations = 100
         , getCrossoverRate  = 0.8
         , getMutationRate   = 0.2
         , getCrossoverParam = 0
@@ -134,12 +136,12 @@ main = do
         }
 
   -- read in chessboard dataset
-  (Right chessboard) <- fmap V.fromList <$> DVS.readDVSData "../aer/data/chessboard.aedat"
+  (Right chessboard) <- fmap V.fromList <$> DVS.readDVSData "../aer/data/synthetic-line.aedat"
 
   -- run the ga
-  result <- evolveVerbose (mkStdGen 1337) gaConfig () chessboard :: IO (Archive Gabor Score)
+  archive <- replicateM 10 $ do
+    gen <- newStdGen
+    (evolveVerbose gen gaConfig () chessboard :: IO (Archive Gabor Score))
+  putStrLn "--------------------------------"
+  print (concat archive)
 
-
-  print result
-
-  
