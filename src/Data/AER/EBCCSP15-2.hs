@@ -17,24 +17,16 @@ import           Control.Monad.Random
 import           Control.Monad
 import           Control.Parallel.Strategies
 
-import           Data.List
-import           Data.Word7
 import           Data.Complex
-import           Data.Gabor
 import           Data.Monoid
-import           Data.MemoTrie
-import qualified Data.Foldable as F
+
+import           Data.Thyme
+import           Data.Thyme.Time
+import           Data.AffineSpace
+
+import           Data.Gabor
 
 import           GA
-
-import           System.Random
-
-import           Codec.Picture
-
-newtype Gabor  = Gabor {unGabor :: (Double,Double,Double,Double,Double,Double,Double)} deriving (Show,Read,Ord,Eq)
-
-mkGabor λ θ ψ σ γ ox oy = Gabor (λ,θ,ψ,σ,γ,ox,oy)
-evalGabor (Gabor (λ,θ,ψ,σ,γ,ox,oy)) x y = gabor λ θ ψ σ γ (x-ox) (y-oy)
 
 type    Score  = Double
 type    Events = V.Vector (DVS.Event DVS.Address)
@@ -53,7 +45,8 @@ type    Pool   = ()
 
 
 -- | generate a single random gabor filter
-genRandomGabor :: (Applicative m, MonadRandom m) => m Gabor
+genRandomGabor :: (Applicative m, MonadRandom m, Floating a, Random a) 
+               => m (Gabor a)
 genRandomGabor = mkGabor <$> pure 3                -- wavelength
                          <*> getRandomR (-pi,pi)   -- orientation
                          <*> getRandomR (0,pi/2)   -- phase
@@ -64,8 +57,9 @@ genRandomGabor = mkGabor <$> pure 3                -- wavelength
 
 
 -- | combine two gabor filters into one
-crossoverGabors :: (Applicative m, MonadRandom m) => Gabor -> Gabor -> m Gabor
-crossoverGabors (Gabor (aλ,aθ,aψ,aσ,aγ,aox,aoy)) (Gabor (bλ,bθ,bψ,bσ,bγ,box,boy)) = go
+crossoverGabors :: (Applicative m, MonadRandom m, Fractional a)
+                => (Gabor a) -> (Gabor a) -> m (Gabor a)
+crossoverGabors (Gabor aλ aθ aψ aσ aγ aox aoy) (Gabor bλ bθ bψ bσ bγ box boy) = go
     where go = mkGabor <$> uniform [aλ,bλ]
                        <*> uniform [aθ,bθ]
                        <*> uniform [aψ,bψ]
@@ -74,17 +68,23 @@ crossoverGabors (Gabor (aλ,aθ,aψ,aσ,aγ,aox,aoy)) (Gabor (bλ,bθ,bψ,bσ,b�
                        <*> uniform [aox,box]
                        <*> uniform [aoy,boy]
 
-clamp mi ma x = max mi (min ma x)
+clamp :: Ord a => a -> a -> a -> a
+clamp mi ma = max mi . min ma
 
 -- | mutate one gabor filter
-mutateGabor :: (Applicative m, MonadRandom m) => Gabor -> m Gabor
-mutateGabor (Gabor (λ,θ,ψ,σ,γ,ox,oy) ) = mkGabor <$> pure 3
-                                                 <*> (clamp (-pi) pi <$> uniform [0.9*θ,θ,1.1*θ])
-                                                 <*> (clamp 0 (pi/2) <$> uniform [0.9*ψ,ψ,1.1*ψ])
-                                                 <*> pure 1
-                                                 <*> pure 1
-                                                 <*> (clamp 0 128 <$> uniform [0.9*ox,ox,1.1*ox])
-                                                 <*> (clamp 0 128 <$> uniform [0.9*oy,oy,1.1*oy])
+mutateGabor :: (Applicative m, MonadRandom m, Floating a, Random a, Ord a)
+            => (Gabor a) -> m (Gabor a)
+mutateGabor (Gabor λ θ ψ σ γ ox oy) = mkGabor <$> pure λ
+                                                 {-<*> (clamp (-pi) pi <$> uniform [0.9*θ,θ,1.1*θ])-}
+                                                 <*> (clamp (-pi) pi . (+θ) <$> getRandomR (-pi,pi))
+                                                 {-<*> (clamp 0 (pi/2) <$> uniform [0.9*ψ,ψ,1.1*ψ])-}
+                                                 <*> (clamp 0 (pi/2) . (+ψ) <$> getRandomR (-pi/2,pi/2))
+                                                 <*> pure σ
+                                                 <*> pure γ
+                                                 {-<*> (clamp 0 128 <$> uniform [0.9*ox,ox,1.1*ox])-}
+                                                 {-<*> (clamp 0 128 <$> uniform [0.9*oy,oy,1.1*oy])-}
+                                                 <*> (clamp 0 128 . (+ox) <$> getRandomR (-64,64))
+                                                 <*> (clamp 0 128 . (+oy) <$> getRandomR (-64,64))
 
 newtype ListSum a = ListSum { unListSum :: [a] } deriving (Show,Read,Eq,Ord)
 
@@ -93,25 +93,25 @@ instance (Num a) => Monoid (ListSum a) where
     mappend a b = ListSum $ zipWith (+) (unListSum a) (unListSum b)
 
 
-scoreGabor :: Events -> Gabor -> Double
+scoreGabor :: Events -> (Gabor Double) -> Double
 scoreGabor es g = negate $ V.foldl' go 0 es
-    where go acc (DVS.qview -> (p,x,y,t)) = acc + unP p * preGabor (fromIntegral x) (fromIntegral y)
+    where go acc (DVS.qview -> (p,x,y,_)) = acc + unP p * preGabor (fromIntegral x) (fromIntegral y)
           unP DVS.U = 1
           unP DVS.D = -1
           preGabor x y = v V.! (x + y * 128)
-            where v = V.generate (128*128) (\i -> let (y,x) = i `quotRem` 128 in realPart $ evalGabor g (fromIntegral x) (fromIntegral y))
+            where v = V.generate (128*128) (\i -> let (y',x') = i `quotRem` 128 in realPart $ evalGabor g (fromIntegral x') (fromIntegral y'))
 
-scoreGaborPop :: Events -> [Gabor] -> [Double]
+scoreGaborPop :: Events -> [Gabor Double] -> [Double]
 scoreGaborPop es gs = parMap rseq (scoreGabor es) gs
 
 
 -- define an instance of Entitiy for Gabor filters over AER streams
-instance Entity Gabor Score Events Pool IO where
-    genRandom pool seed       = return $ evalRand genRandomGabor (mkStdGen seed)
-    crossover pool _ seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
-    mutation  pool _ seed g   = return $ evalRand (Just <$> mutateGabor g) (mkStdGen seed) 
-    scorePop  es _ pop        = return . Just . map Just $ scoreGaborPop es pop
-    {-score' events gabor       = Just $ scoreGabor events gabor-}
+instance Entity (Gabor Double) Score Events Pool IO where
+    genRandom _ seed       = return $ evalRand genRandomGabor (mkStdGen seed)
+    crossover _ _ seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
+    mutation  _ _ seed g   = return $ evalRand (Just <$> mutateGabor g) (mkStdGen seed) 
+    scorePop  es _ pop     = return . Just . map Just $ scoreGaborPop es pop
+    {-score' events gabor    = Just $ scoreGabor events gabor-}
 
 
 
@@ -138,10 +138,15 @@ main = do
   -- read in chessboard dataset
   (Right chessboard) <- fmap V.fromList <$> DVS.readDVSData "../aer/data/synthetic-line.aedat"
 
+  putStrLn $ "learning from " ++ show (V.length chessboard) ++ " events"
+
   -- run the ga
   archive <- replicateM 10 $ do
-    gen <- newStdGen
-    (evolveVerbose gen gaConfig () chessboard :: IO (Archive Gabor Score))
+    t <- getCurrentTime
+    let gen = mkStdGen (fromIntegral $ toMicroseconds (t .-. minBound))
+    (evolveVerbose gen gaConfig () chessboard :: IO (Archive (Gabor Double) Score))
   putStrLn "--------------------------------"
-  print (concat archive)
+  let results = show (concat archive)
+  writeFile "results.txt" results
+  putStrLn results
 

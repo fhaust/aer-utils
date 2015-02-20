@@ -40,8 +40,8 @@ import           Control.Monad.Random
 {-                  | y < 32 || y > 96 = 0-}
 {-                  | otherwise        = 0.9-}
 blockDist t x y p | t < 1            = 0
-                  | p == U, x < 64 && x > 60 = 0.9
-                  | p == D, x > 64 && x < 70 = 0.9
+                  | p == U, x >= 60 && x < 64 = 0.9
+                  | p == D, x >= 64 && x < 68 = 0.9
                   | otherwise        = 0.0
 
 postPro = sortBy (compare `on` timestamp) . concat
