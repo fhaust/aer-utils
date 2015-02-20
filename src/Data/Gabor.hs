@@ -31,13 +31,13 @@ gabor λ θ ψ σ γ x y = exp ( (-0.5) * ((x'^2 + γ^2*y'^2) / (σ^2)) :+ 0) * 
 
 -- | wrapper for storing gabor parameters
 data Gabor a = Gabor 
-  { λ  :: a
-  , θ  :: a
-  , ψ  :: a
-  , σ  :: a
-  , γ  :: a
-  , ox :: a
-  , oy :: a
+  { λ  :: !a
+  , θ  :: !a
+  , ψ  :: !a
+  , σ  :: !a
+  , γ  :: !a
+  , ox :: !a
+  , oy :: !a
   } deriving (Show,Read,Ord,Eq)
 
 mkGabor λ θ ψ σ γ ox oy               = Gabor λ θ ψ σ γ ox oy 
