@@ -22,6 +22,7 @@ import           Data.Traversable
 import           Data.Foldable
 
 import           Control.Applicative
+import           Control.Monad.Cont
 
 import           Numeric.LinearAlgebra.HMatrix
 
@@ -54,6 +55,15 @@ updateNeuron l w (v,t) now = do
       then (True,(0,now))
       else (False,(v',now))
 
+{-updatePLCont level accs now p x y = do-}
+
+{-    let x' = x `div` (2^level)-}
+{-        y' = y `div` (2^level)-}
+{-        ls = 128 `div` (2^level)-}
+{-        li = x' + y' * ls-}
+
+{-    oldNeuron <- UMV.read accs li -}
+{-    let (spike,newNeuron) = updateNeuron globalLeak (-}
 
 
 {-updatePyramidLevel :: Int -> UMV.IOVector Neuron -> UTCTime -> Int -> Int -> Float -> IO ()-}
@@ -73,6 +83,9 @@ updatePyramidLevel level accs now p x y cont = do
       then (spikeDesc:) <$> cont x' y'
       else return []
 
+-- | FIXME not sure if this is the correct way to downsample
+-- maybe it is better to "distribute" the charge to every level
+-- instead of propagating events
 updatePyramid :: [UMV.IOVector Neuron] -> UTCTime -> Float -> Int -> Int
               -> IO [(Int, Int, Int, Float)]
 updatePyramid accs now p x y = do
