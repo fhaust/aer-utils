@@ -22,16 +22,18 @@ import Control.Monad
 import Math.KMeans
 
 import           Numeric.LinearAlgebra.HMatrix
+import           Numeric.Ransac
 
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
 import qualified Data.Vector.Unboxed as UV
-import qualified Data.Vector.Unboxed.Mutable as UMV
+{-import qualified Data.Vector.Unboxed.Mutable as UMV-}
 import qualified Data.Vector.Generic as G
 
 import Debug.Trace
 
-dview :: Event Address -> (Bool,Int,Int,Bool,Float)
+
+dview :: Event Address -> (Bool,Int,Int,Bool,Double)
 dview (qview -> (p,x,y,c,t)) = ( p == U
                               , fromIntegral x
                               , fromIntegral y
@@ -47,13 +49,14 @@ isDownEvent (qview -> (p,_,_,_,_)) = p == D
 infixr 4 <$$>
 f <$$> x = fmap (fmap f) x
 
-type Orientation = (Float,Float,Float,NominalDiffTime)
+type Orientation = (Double,Double,Double,NominalDiffTime)
 
 main = do
 
 
     -- read in the data
-    (Right es) <- V.fromList <$$> readStereoData "../aer/data/Tmpdiff128StereoPair-vertical-arm.aedat"
+    {-(Right es) <- V.fromList <$$> readStereoData "../aer/data/Tmpdiff128StereoPair-vertical-arm.aedat"-}
+    (Right es) <- V.fromList <$$> readStereoData "../aer/data/Tmpdiff128StereoPair-crazy-guy-in-chair.aedat"
 
     -- unzip events into four streams (up/down, left/right)
     let leftUpEs    = V.filter (\e -> isLeftEvent e  && isUpEvent e) es
@@ -63,57 +66,79 @@ main = do
 
 
     -- accumulate the timestamps
-    let zeroTs      = UV.replicate (128*128) 0
-        leftUpTimes = V.scanl' (\ts e -> updateTimeVec e ts) zeroTs leftUpEs
-        rightUpTimes = V.scanl' (\ts e -> updateTimeVec e ts) zeroTs rightUpEs
+    let zeroTs      = V.replicate (128*128) []
+        timeWindow  = 0.01
+        leftUpTimes = V.scanl' (\ts e -> updateTimeVec timeWindow e ts) zeroTs leftUpEs
+        rightUpTimes = V.scanl' (\ts e -> updateTimeVec timeWindow e ts) zeroTs rightUpEs
 
     -- extract plane normals
-    let leftUpPlanes = V.zipWith (extractPlane 4) leftUpEs leftUpTimes
-        rightUpPlanes = V.zipWith (extractPlane 4) rightUpEs rightUpTimes
+    let leftUpPlanes = V.zipWith (extractPlane timeWindow 4) leftUpEs leftUpTimes
+        rightUpPlanes = V.zipWith (extractPlane timeWindow 4) rightUpEs rightUpTimes
+
+    {-V.mapM_ print (V.filter isJust leftUpPlanes)-}
 
     -- do kmeans clustering on the plane normals
-    let numMeans = 5
-    leftUpMeans  <- kmeansWith randomPartition id euclidSq numMeans (map V.convert . catMaybes $ V.toList leftUpPlanes)
+    {-let numMeans = 5-}
+    {-leftUpMeans  <- kmeansWith randomPartition id euclidSq numMeans (map V.convert . catMaybes $ V.toList leftUpPlanes)-}
     {-rightUpMeans <- kmeans (V.convert.snd) euclidSq numMeans (catMaybes $ V.toList rightUpPlanes)-}
 
-    G.mapM_ print leftUpMeans
+    {-G.mapM_ print leftUpMeans-}
     {-G.mapM_ print rightUpMeans-}
     {-print rightUpMeans-}
 
-    {-let leftUpStuff  = V.zipWith (\a b -> (a,) <$> b) leftUpEs leftUpPlanes-}
-    {-    rightUpStuff  = V.zipWith (\a b -> (a,) <$> b) rightUpEs rightUpPlanes-}
+    let leftUpStuff  = V.zipWith (\a b -> (a,) <$> b) leftUpEs leftUpPlanes
+        rightUpStuff = V.zipWith (\a b -> (a,) <$> b) rightUpEs rightUpPlanes
 
-    {-    stuff = sortBy (compare `on` (timestamp.fst))-}
-    {-          . catMaybes $ V.toList (leftUpStuff V.++ rightUpStuff)-}
+        stuff = sortBy (compare `on` (timestamp.fst))
+              . catMaybes $ V.toList (leftUpStuff V.++ rightUpStuff)
 
     {-writeFile "/tmp/stuff.txt" ""-}
     {-mapM_ (appendFile "/tmp/stuff.txt" . ('\n':) . show) stuff-}
 
-    putStrLn "stuff"
+    let s = map (\(e,(nc,cs,n)) -> show (n G.! 0) ++ "," ++ show (n G.! 1) ++ "," ++ show (n G.! 2) ++ "," ++ if isLeftEvent e then "1" else "0") stuff
 
-type Mat a = UV.Vector a
+    writeFile "/tmp/stuff.txt" (intercalate "\n" s)
+
+    {-putStrLn $ "done ... extracted " ++ show (length stuff) ++ " planes, from " ++ show (V.length es) ++ " events."-}
+
+type Mat a = V.Vector a
 
 matIdx x y = x + y * 128
 vecIdx i = i `quotRem` 128
 
-writeMat x y a = UV.modify (\v -> UMV.write v (matIdx x y) a)
-readMat x y v = v UV.! (matIdx x y)
+writeMat x y a = V.modify (\v -> MV.write v (matIdx x y) a)
+readMat x y v = v V.! (matIdx x y)
+updateMat x y f = V.modify $ \v -> do
+  let i = matIdx x y
+  a <- MV.read v i
+  MV.write v i (f a)
 
-updateTimeVec :: Event Address -> Mat Float -> Mat Float
-updateTimeVec (dview -> (_,x,y,_,t)) v = writeMat (fromIntegral x) (fromIntegral y) t v
 
 
-extractPlaneCands :: Int -> Int -> Int -> Mat Float -> [(Int,Int,Float)]
-extractPlaneCands r x y m = [ (x',y', readMat x' y' m) | y' <- [y-r..y+r]
-                                                       , x' <- [x-r..x+r]
-                                                       , x' >= 0 && x' < 128
-                                                       , y' >= 0 && y' < 128
-                                                       ]
+-- take the current event and store it in the matrix containing the time
+-- windows. Then drop all events that aren't in the time window anymore.
+updateTimeVec :: Double -> Event Address -> Mat [Double] -> Mat [Double]
+updateTimeVec window (dview -> (_,x,y,_,t)) = updateMat x y (\ts -> takeWhile isInTime (t : ts))
+    where isInTime = (> t - 0.1)
 
-extractPlane :: Int -> Event Address -> Mat Float -> Maybe (Vector Double)
-extractPlane r (dview -> (_,x,y,_,t)) m = test $ (toNormalForm <$> leastSquares cands)
+-- extract possible candidates in radius around position
+-- FIXME maybe move the timefilter here too
+extractPlaneCands :: Int -- ^ radius
+                  -> Int -- ^ x position
+                  -> Int -- ^ y position
+                  -> Mat [Double] -- ^ possible candidates
+                  -> [(Int,Int,Double)]
+extractPlaneCands r x y m = concat [ map (x',y',) (readMat x' y' m) | y' <- [y-r..y+r]
+                                                                    , x' <- [x-r..x+r]
+                                                                    , x' >= 0 && x' < 128
+                                                                    , y' >= 0 && y' < 128
+                                                                    ]
+
+
+extractPlane :: Double -> Int -> Event Address -> Mat [Double] -> Maybe (Int,[(Int,Int,Double)],Vector Double)
+extractPlane window r (dview -> (_,x,y,_,t)) m = (numCands,cands,) <$> (test (toNormalForm <$> leastSquares cands))
     where cands = filter notTooOld $ extractPlaneCands r x y m
-          notTooOld (_,_,ct) = abs(ct - t) < 0.01
+          notTooOld (_,_,ct) = abs(ct - t) < window
           numCands = length cands
           test = if numCands < 4 then const Nothing else id
 
@@ -124,11 +149,12 @@ toNormalForm v = correctSign $ vector [a/n, b/n, c/n]
         correctSign = if (c/n) < 0 then scale (-1) else id
 
 -- http://stackoverflow.com/questions/1400213/3d-least-squares-plane
-leastSquares :: [(Int,Int,Float)] -> Maybe (Vector Double)
+leastSquares :: [(Int,Int,Double)] -> Maybe (Vector Double)
 leastSquares cs = test $ app (inv m) v
     where (m,v) = leastSquaresMatVec cs
           test  = if det m /= 0 then Just else const Nothing
 
+leastSquaresMatVec :: [(Int, Int, Double)] -> (Matrix Double, Vector Double)
 leastSquaresMatVec cs = (m,v)
     where m00 = sum $ zipWith (*) xis xis
           m10 = sum $ zipWith (*) xis yis
@@ -140,7 +166,7 @@ leastSquaresMatVec cs = (m,v)
           m12 = sum yis
           m22 = fromIntegral $ length cs
           m   = matrix 3 [m00,m10,m20,m01,m11,m21,m02,m12,m22]
-          
+
 
           v0  = sum $ zipWith (*) xis zis
           v1  = sum $ zipWith (*) yis zis

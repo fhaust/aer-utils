@@ -58,7 +58,7 @@ executable learngabors
                        -fllvm -optlo-O3
                        -threaded 
                        -rtsopts 
-                       -eventlog
+                       -- -eventlog
                        ---fprof-auto -prof
                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
@@ -77,14 +77,17 @@ executable motionflow
                        ipprint,
                        hscolour,
                        kmeans-vector,
-                       MonadRandom
+                       MonadRandom,
+                       RANSAC,
+                       linear,
+                       lens
   main-is:             Data/AER/MotionFlow.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
                        -fllvm -optlo-O3
                        -threaded 
                        -rtsopts 
-                       -eventlog
-                       ---fprof-auto -prof
+                       -- -eventlog
+                       -fprof-auto -prof
                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
