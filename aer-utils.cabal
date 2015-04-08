@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 
 
 library
-  build-depends:       base >= 4.7 && < 4.8,
+  build-depends:       base >= 4.8 && < 4.9,
                        aer,
                        vector-space,
                        thyme,
@@ -34,38 +34,40 @@ library
   hs-source-dirs:      src
   default-language:    Haskell2010
 
-executable learngabors
-  build-depends:       base >= 4.7 && < 4.8,
-                       aer,
-                       vector-space,
-                       thyme,
-                       containers,
-                       MemoTrie,
-                       split,
-                       random,
-                       MonadRandom,
-                       dtw,
-                       GA,
-                       vector,
-                       ekg, ekg-core,
-                       parallel,
-                       JuicyPixels,
-                       hmatrix,
-                       ipprint,
-                       hscolour
-  main-is:             Data/AER/EBCCSP15-2.hs
-  ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
-                       -fllvm -optlo-O3
-                       -threaded 
-                       -rtsopts 
-                       -- -eventlog
-                       ---fprof-auto -prof
-                       --"-with-rtsopts=-N -p -s -h -i0.1 -T"
-  hs-source-dirs:      src
-  default-language:    Haskell2010
+--executable learngabors
+--  build-depends:       base >= 4.8 && < 4.9,
+--                       aer,
+--                       vector-space,
+--                       thyme,
+--                       containers,
+--                       MemoTrie,
+--                       split,
+--                       random,
+--                       MonadRandom,
+--                       dtw,
+--                       GA,
+--                       vector,
+--                       ekg, ekg-core,
+--                       parallel,
+--                       JuicyPixels,
+--                       hmatrix,
+--                       cassava,
+--                       bytestring,
+--                       ad,
+--                       simple-reflect
+--  main-is:             Data/AER/EBCCSP15.hs
+--  ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
+--                       -fllvm -optlo-O3
+--                       -threaded 
+--                       -rtsopts 
+--                       -- -eventlog
+--                       ---fprof-auto -prof
+--                       --"-with-rtsopts=-N -p -s -h -i0.1 -T"
+--  hs-source-dirs:      src
+--  default-language:    Haskell2010
 
 executable motionflow
-  build-depends:       base >= 4.7 && < 4.8,
+  build-depends:       base >= 4.8 && < 4.9,
                        aer,
                        vector-space,
                        thyme,
@@ -74,8 +76,6 @@ executable motionflow
                        vector,
                        parallel,
                        hmatrix,
-                       ipprint,
-                       hscolour,
                        kmeans-vector,
                        MonadRandom,
                        RANSAC,

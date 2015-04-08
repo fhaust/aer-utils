@@ -1,252 +1,177 @@
 
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ParallelListComp #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE TypeFamilies #-}
 
-module Main (main) where
+module Main  where
 
-
-import           GA
-
-import qualified Data.AER.DVS128      as DVS
-import qualified Data.AER.Types       as DVS
-import           Data.AER.Synthesize
 
 import           Data.Function
-import           Data.DTW
-import           Data.Bits
-import           Data.Complex
-import           Data.IORef
 import           Data.Traversable
 import           Data.Foldable
+import           Data.List.Split
 
-import           Data.Thyme.Clock
+import qualified Data.Vector.Generic as V
+import qualified Data.Vector.Storable as S
+import qualified Data.Vector          as B
 
-import qualified Data.Vector.Unboxed as V
+import           Numeric.LinearAlgebra.HMatrix
+import           Numeric.AD
 
 import           Control.Applicative
 import           Control.Monad.Random
 import           Control.Monad hiding (forM_,mapM,mapM_)
 import           Control.Parallel.Strategies
 
+import           Codec.Picture
 
-import           System.Random
-import           System.IO.Unsafe
-
-import           System.Remote.Monitoring
-import qualified System.Metrics.Distribution as Dist
 
 import           Debug.Trace
 
-import           Prelude hiding (forM_,mapM,mapM_,sum)
-
--- create type for gabor filter + factor
-
-
---binaryGauss x x0 σ = case σ of
---                        True  -> 0.5
---                        False -> case x `xor` x0 of
---                                   True  -> 0
---                                   False -> 1
+import           Prelude hiding (forM_,mapM,mapM_,sum,foldl1)
 
 
 
-gabor3d
-  :: RealFloat a =>
-     a -> a -> a -> a -> a -> a -> a -> a -> a -> Complex a
-gabor3d λ θ ψ σ γ μ t x y = exp ( (-0.5) * ((t^two) / (μ^two)) :+ 0 ) * exp ( (-0.5) * ((x'^two + γ^two*y'^two) / (σ^two)) :+ 0) * exp ( 0 :+ (2*pi*(x'/λ+ψ)) )
-    where x' =  x * cos θ + y * sin θ
-          y' = -x * sin θ + y * cos θ
-          two = 2 :: Int
-
-data Gabor3d = Gabor3d
-             { α :: Double    -- this filters factor
-             , λ :: Double    -- duh?
-             , θ :: Double    -- rotation of the 2d mask
-             , ψ :: Double    -- duh2?
-             , σ :: Double    -- width of the 2d mask
-             , γ :: Double    -- compression of the 2d mask
-             , μ :: Double    -- compression of the 3d mask
-             , ot :: Double   -- offset in t dimension
-             , ox :: Double   -- offset in x dimension
-             , oy :: Double   -- offset in y dimension
-             , op :: Double   -- offset in p dimension
-             } deriving (Show,Read,Eq,Ord)
-
-lview :: Gabor3d -> [Double]
-lview (Gabor3d α λ θ ψ σ γ μ ot ox oy op) = [α,λ,θ,ψ,σ,γ,μ,ot,ox,oy,op]
-
-rlview :: [Double] -> Gabor3d
-rlview [α,λ,θ,ψ,σ,γ,μ,ot,ox,oy,op] = (Gabor3d α λ θ ψ σ γ μ ot ox oy op)
-rlview ps                          = error $ "couldn't create Gabor3d from: " ++ show ps
-
-evalGabor :: Gabor3d -> NominalDiffTime -> Int -> Int -> DVS.Polarity -> Double
-evalGabor (Gabor3d{..}) t x y p 
-    = realPart $ gabor3d λ θ ψ σ γ μ (toSeconds t-ot) (fromIntegral x-ox) (fromIntegral y-oy)
-
---------------------------------------------------------------------------------
-type Gabors = [Gabor3d]
-type SpikeTrain = V.Vector (DVS.Event DVS.Address)
-
-type Score = Double
-type Bounds = (NominalDiffTime,NominalDiffTime)
-
--- create Entity instance for 3d gabor kernels
-
-instance Entity Gabors Score SpikeTrain Bounds IO where
-    genRandom pool seed = return $ evalRand (genRandomGabors pool 10) (mkStdGen seed)
-    crossover _ param seed a b = return $ evalRand (Just <$> crossoverGabors a b) (mkStdGen seed)
-    mutation  pool param seed a = return $ evalRand (Just <$> mutationGabors pool a) (mkStdGen seed)
-    --score     spikes gabors  = Just <$> scoreGabor spikes gabors
-    scorePop spikes _ gs = scoreGabors spikes gs
-
-
-
--- implementations
-
-
-genRandomGabor :: (Applicative m, MonadRandom m) => Bounds -> m Gabor3d
-genRandomGabor (minT,maxT) = Gabor3d <$> getRandomR (-1,1)
-                                     <*> getRandomR (-1,1)
-                                     <*> getRandomR (-1,1)
-                                     <*> getRandomR (-1,1)
-                                     <*> getRandomR (-1,1)
-                                     <*> getRandomR (-1,1)
-                                     <*> getRandomR (-1,1)
-                                     <*> getRandomR (toSeconds minT, toSeconds maxT)
-                                     <*> getRandomR (0,128)
-                                     <*> getRandomR (0,128)
-                                     <*> getRandomR (0,1)
-
-genRandomGabors p n = replicateM n (genRandomGabor p)
-
---crossoverGabor a b = Gabor3d <$> uniform [α a, α b]
---                             <*> uniform [λ a, λ b]
---                             <*> uniform [θ a, θ b]
---                             <*> uniform [ψ a, ψ b]
---                             <*> uniform [σ a, σ b]
---                             <*> uniform [γ a, γ b]
---                             <*> uniform [μ a, μ b]
-
-crossoverGabors as bs = do
-    n <- getRandomR (0,length as)
-    return $ take n as ++ drop n bs
-
---mutationGabor :: (Applicative m, MonadRandom m) => Gabor3d -> m Gabor3d
-mutationGabor (minT,maxT) a = do
-    {-traceM $ "mutate gabor: " ++ show a-}
-    rα <- getRandomR (-1,1)
-    rλ <- getRandomR (-1,1)
-    rθ <- getRandomR (-1,1)
-    rψ <- getRandomR (-1,1)
-    rσ <- getRandomR (-1,1)
-    rγ <- getRandomR (-1,1)
-    rμ <- getRandomR (-1,1)
-    rot <- getRandomR (toSeconds minT, toSeconds maxT)
-    rox <- getRandomR (0,128)
-    roy <- getRandomR (0,128)
-    rop <- getRandomR (0,1)
-    ma <- Gabor3d <$> uniform [α a, α a + rα]
-                  <*> uniform [λ a, λ a + rλ]
-                  <*> uniform [θ a, θ a + rθ]
-                  <*> uniform [ψ a, ψ a + rψ]
-                  <*> uniform [σ a, σ a + rσ]
-                  <*> uniform [γ a, γ a + rγ]
-                  <*> uniform [μ a, μ a + rμ]
-                  <*> uniform [ot a, rot]
-                  <*> uniform [ox a, rox]
-                  <*> uniform [oy a, roy]
-                  <*> uniform [op a, rop]
-
-    uniform [a,ma]
-
-mutationGabors pool gs = do
-    mutated <- mapM (mutationGabor pool) gs
-    spawned <- genRandomGabor pool
-    uniform [mutated, spawned : mutated]
-
------------------------------------------------------------------------------
-
-
+infixl 4 <$$>
+f <$$> x = fmap (fmap f) x
 
 
 -----------------------------------------------------------------------------
 
+newtype Mat a = Mat { unMat :: B.Vector a } deriving (Functor)
 
-gaborsToDistribution :: Gabors -> (NominalDiffTime -> Int -> Int -> DVS.Polarity -> Double) 
-gaborsToDistribution gs ts x y pol = sum [ evalGabor g ts x y pol | g <- gs ]
+scale' f = Mat . V.map (*f) . unMat
+add' a b = Mat $ V.zipWith (+) (unMat a) (unMat b)
+sub' a b = Mat $ V.zipWith (-) (unMat a) (unMat b)
+mul' a b = Mat $ V.zipWith (*) (unMat a) (unMat b)
+pow' a e = Mat $ V.map (^e) (unMat a)
 
-
-eventSqDistance (DVS.qview -> (ap,ax,ay,at)) (DVS.qview -> (bp,bx,by,bt)) = dt + dx + dy + dp
-    where dt = (toSeconds at - toSeconds bt)^(2::Int)
-          dx = (fromIntegral ax - fromIntegral bx)^(2::Int)
-          dy = (fromIntegral ay - fromIntegral by)^(2::Int)
-          dp = if ap == bp then 0 else 1
-
-halfSpikeTrain :: SpikeTrain -> SpikeTrain
-halfSpikeTrain spikes = V.generate (V.length spikes `quot` 2) (\i -> go (spikes V.! (i*2)) (spikes V.! ((i*2)+1)))
-    where go (DVS.Event (DVS.Address ap ax ay) at)
-             (DVS.Event (DVS.Address bp bx by) bt) 
-                = DVS.Event (DVS.Address ap ((ax+bx)`quot`2) ((ay+by)`quot`2)) ((at+bt)/2)
-
-scoreGabor :: SpikeTrain -> Gabors -> IO Double
-scoreGabor aer gs  = do
-    {-traceM $ "score gabor: " ++ show gs-}
-    {-traceM $ "spikes count: " ++ show (V.length aer)-}
-
-    let headTS = DVS.timestamp $ V.head aer
-        lastTS = DVS.timestamp $ V.last aer
-
-    -- 1. create distribution
-    let distFun = gaborsToDistribution gs
-
-    -- 2. synthesize spiketrain from gs
-    synthST' <- synthesize (V.length aer) (headTS,lastTS) distFun
-    {-traceM $ "synth length: " ++ show (length synthST')-}
-    let synthST = V.fromListN (V.length aer) synthST'
-
-    -- 3. use dtw to calculate error
-    let c = cost $ fastDtw eventSqDistance halfSpikeTrain 2 aer synthST
-
-    {-traceM $ "score: " ++ show c-}
-    -- update fitness distribution
-    fitnessD <- readIORef globalFitnessIORef
-    forM_ fitnessD $ \d -> Dist.add d c
-
-    return c
-
-scoreGabors :: SpikeTrain -> [Gabors] -> IO (Maybe [Maybe Double])
-scoreGabors spikes gs = do
-    traceM "scoring gabors"
-    scoreGabors <- mapM (scoreGabor spikes) gs
-    let parGabors = scoreGabors `using` parList rdeepseq
-    return $ Just (map Just parGabors)
+sumElems' :: Num a => Mat a -> a
+sumElems' = V.sum . unMat
 
 
-globalFitnessIORef :: IORef (Maybe Dist.Distribution)
-globalFitnessIORef = unsafePerformIO $ newIORef Nothing
+eq1' :: Num a => [a] -> [Mat a] -> Mat a
+eq1' as φs = foldl1 add' $ zipWith scale' as φs
+
+eq3' :: Num a => Mat a -> [Mat a] -> [a] -> a
+eq3' img φs as = negate $ sumElems' (errImg `pow'` (2::Int))
+  where errImg = img `sub'` (eq1' as φs)
+
+diffTest :: forall a. (Fractional a, Floating a, Ord a) => Mat a -> [Mat a] -> [a] -> [[a]]
+diffTest m φs as0 = gradientDescent go as0
+    where go :: forall t. (Scalar t ~ a, Mode t, Floating t) => [t] -> t
+          go as = - eq3' (auto <$> m) (auto <$$> φs) as - 0.14 * eq4a 0.14 as
+
+-----------------------------------------------------------------------------
+
+-- equation one: add up base functions and factors
+
+eq1 :: (Container m a, Num (m a)) => [a] -> [m a] -> m a
+eq1 as φs = sum [ a `scale` φ | a <- as | φ <- φs ]
+
+eq3 :: (Container m a, Num (m a)) => m a -> [a] -> [m a] -> a
+eq3 img as φs = - sumElements (errImg * errImg)
+    where errImg = img - (eq1 as φs)
+
+eq4a :: Floating a => a -> [a] -> a
+eq4a σ as = - sum [ eqs (a/σ) | a <- as ]
+
+eqs x = log (1+x*x)
+eqs' x = (2*x) / (x*x+1)
+
+
+eq5 λ σ img φs as φ a = b - c - s
+    where b = sumElements (φ * img)
+          c = sum [ aj * (sumElements (φ * φj)) | aj <- as | φj <- φs ]
+          s = (λ/σ) * eqs' (a / σ)
+
+eq5s λ σ img φs as = [ eq5 λ σ img φs as φ a | φ <- φs | a <- as ]
+
+eq6 η img as φs a = η `scale` ( a `scale` (img * eq1 as φs))
+
+adEq5 :: forall m a. (Container m a, Floating a)
+      => m a -> [m a] -> [a] -> [[a]]
+adEq5 m φs as0 = gradientDescent go as0
+  where go :: forall t. (Scalar t ~ a, Mode t, Floating t) => [t] -> t
+        go as = - eq3 (auto <$> m) (auto <$$> φs) as - 0.14 * eq4a 0.14 as
 
 main :: IO ()
 main = do
 
-    server <- forkServer "localhost" 8888
-    fitnessDist <- getDistribution "gabors.score" server
 
-    writeIORef globalFitnessIORef $ Just fitnessDist
+    let imgPath = "../../data/swiss/swiss0-white.png"
 
-    let c = GAConfig 100 10 1000 0.8 0.2 0 0 True False
+    putStrLn $ "create 192 16x16 matrices"
+    phis <- map single <$> replicateM 192 (randn 16 16)
+  
+    putStrLn $ "create 192 values"
+    as <- replicateM 192 randomIO :: IO [Float]
 
-    {-g <- getStdGen-}
-    let g = mkStdGen 0
-    (Right aer) <- fmap V.fromList <$> DVS.readDVSData "../aer/data/DVS128-2014-10-21T17-41-53+0200-20000-0.aedat"
+    putStrLn $ "read image"
+    img <- readAsMat imgPath
 
-    let headT = DVS.timestamp $ V.head aer
-        lastT = DVS.timestamp $ V.last aer
+    putStrLn $ "draw random patches"
+    patches <- replicateM 100 (randomPatch 16 img)
 
-    archive <- evolveVerbose g c (headT,lastT) aer :: IO (Archive [Gabor3d] Double)
 
-    print archive
+    -- just testing:
+    -- convert to mat format
+    let ps = map (Mat . V.convert . flatten) phis
+        i  = Mat . V.convert . flatten $ head patches
 
+    let ds = diffTest i ps as
+
+    mapM_ print $ take 500 ds
+
+
+    putStrLn "done"
+
+
+
+--------------------------------------------------
+
+readAsMat :: FilePath -> IO (Matrix Float)
+readAsMat fn = do
+    (Right (ImageY16 img)) <- readImage fn
+    let f = pixelMap ((/(2^^16-1)) . fromIntegral) $ img :: Image Float
+    return $ img2mat f
+
+randomPatch s m = do
+    let t = s `div` 2
+    c <- randomRIO (t, cols m - t)
+    r <- randomRIO (t, rows m - t)
+
+    return $ subMatrix (r-t,c-t) (s,s) m
+
+createRandomPatchesFromImage imagePath = do
+    -- read in test image
+    putStrLn "reading image"
+    (Right (ImageY16 raw)) <- readPng imagePath
+
+    -- convert in matrix
+    let img :: Image Float
+        img = pixelMap ( (/(2^^16-1)) . fromIntegral ) raw
+        mat = img2mat img
+
+    -- draw random submatrices
+    ms <- replicateM 512 (randomPatch 16 mat)
+    let ps = map mat2img ms :: [Image PixelF]
+
+
+    -- write out patches as images
+    forM_ (zip [0..] ps) $ \(i,p) -> do
+      let path = "/tmp/imgs/img" ++ show i ++ ".png"
+          img  = pixelMap (round . (*(2^16))) p :: Image Pixel16
+      putStrLn $ "writing: " ++ path
+      putStrLn $ "maximum: " ++ show (V.maximum . imageData $ img)
+      putStrLn $ "minimum: " ++ show (V.minimum . imageData $ img)
+      writePng path img
+
+--------------------------------------------------
+
+
+mat2img m = Image (cols m) (rows m) (flatten m)
+img2mat i = reshape (imageWidth i) $ imageData i
