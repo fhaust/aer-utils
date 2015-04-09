@@ -5,14 +5,12 @@
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Main  where
 
 
-import           Data.Function
-import           Data.Traversable
 import           Data.Foldable
-import           Data.List.Split
 
 import qualified Data.Vector.Generic as V
 import qualified Data.Vector.Storable as S
@@ -21,21 +19,19 @@ import qualified Data.Vector          as B
 import           Numeric.LinearAlgebra.HMatrix
 import           Numeric.AD
 
-import           Control.Applicative
 import           Control.Monad.Random
 import           Control.Monad hiding (forM_,mapM,mapM_)
-import           Control.Parallel.Strategies
 
 import           Codec.Picture
 
 
-import           Debug.Trace
+{-import           Debug.Trace-}
 
-import           Prelude hiding (forM_,mapM,mapM_,sum,foldl1)
 
 
 
 infixl 4 <$$>
+(<$$>) :: (Functor f0, Functor f1) => (a -> b) -> f0 (f1 a) -> f0 (f1 b)
 f <$$> x = fmap (fmap f) x
 
 
@@ -92,11 +88,11 @@ eq5s λ σ img φs as = [ eq5 λ σ img φs as φ a | φ <- φs | a <- as ]
 
 eq6 η img as φs a = η `scale` ( a `scale` (img * eq1 as φs))
 
-adEq5 :: forall m a. (Container m a, Floating a)
-      => m a -> [m a] -> [a] -> [[a]]
-adEq5 m φs as0 = gradientDescent go as0
-  where go :: forall t. (Scalar t ~ a, Mode t, Floating t) => [t] -> t
-        go as = - eq3 (auto <$> m) (auto <$$> φs) as - 0.14 * eq4a 0.14 as
+{-adEq5 :: forall m a. (Container m a, Floating a)-}
+{-      => m a -> [m a] -> [a] -> [[a]]-}
+{-adEq5 m φs as0 = gradientDescent go as0-}
+{-  where go :: forall t. (Scalar t ~ a, Mode t, Floating t) => [t] -> t-}
+{-        go as = - eq3 (auto <$> m) (auto <$$> φs) as - 0.14 * eq4a 0.14 as-}
 
 main :: IO ()
 main = do
@@ -139,6 +135,7 @@ readAsMat fn = do
     let f = pixelMap ((/(2^^16-1)) . fromIntegral) $ img :: Image Float
     return $ img2mat f
 
+randomPatch :: Int -> Matrix Float -> IO (Matrix Float)
 randomPatch s m = do
     let t = s `div` 2
     c <- randomRIO (t, cols m - t)
@@ -173,5 +170,9 @@ createRandomPatchesFromImage imagePath = do
 --------------------------------------------------
 
 
+mat2img :: Element (PixelBaseComponent a) 
+        => Matrix (PixelBaseComponent a) -> Image a
 mat2img m = Image (cols m) (rows m) (flatten m)
+img2mat :: S.Storable (PixelBaseComponent a) 
+        => Image a -> Matrix (PixelBaseComponent a)
 img2mat i = reshape (imageWidth i) $ imageData i
