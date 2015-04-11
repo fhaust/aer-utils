@@ -53,7 +53,7 @@ executable learngabors
                        ad
   main-is:             Data/AER/EBCCSP15.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
-                       -fllvm -optlo-O3
+                       -- -fllvm -optlo-O3
                        -threaded 
                        -rtsopts 
                        -- -eventlog
