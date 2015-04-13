@@ -1,5 +1,4 @@
 
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ParallelListComp #-}
@@ -59,7 +58,7 @@ eq1' as φs = foldl1 add' $ zipWith scale' as φs
 
 eq3' :: Num a => Mat a -> [Mat a] -> [a] -> a
 eq3' img φs as = negate $ sumElems' (errImg `pow'` (2::Int))
-  where errImg = img `sub'` (eq1' as φs)
+  where errImg = img `sub'` eq1' as φs
 
 eq4a :: Floating a => a -> [a] -> a
 eq4a σ as = - sum [ eqs (a/σ) | a <- as ]
@@ -74,9 +73,9 @@ errFun :: Floating a => Mat a -> [Mat a] -> [a] -> a
 errFun m φs as = - eq3' m φs as - 0.14 * eq4a 0.14 as
 
 diffTest :: forall a. (Fractional a, Floating a, Ord a) => Mat a -> [Mat a] -> [a] -> [[a]]
-diffTest m φs as0 = gradientDescent go as0
+diffTest m φs = gradientDescent go
     where go :: forall t. (Scalar t ~ a, Mode t, Floating t) => [t] -> t
-          go as = errFun (auto <$> m) (auto <$$> φs) as
+          go = errFun (auto <$> m) (auto <$$> φs)
 
 
 -- | take the output of diffTest and give back the first result where
@@ -126,16 +125,16 @@ main = do
 
     let imgPath = "../../data/swiss/swiss0-white.png"
 
-    putStrLn $ "create 192 16x16 matrices"
+    putStrLn "create 192 16x16 matrices"
     phis <- map single <$> replicateM 192 (randn 16 16)
   
-    putStrLn $ "create 192 values"
+    putStrLn "create 192 values"
     as <- replicateM 192 randomIO :: IO [Float]
 
-    putStrLn $ "read image"
+    putStrLn "read image"
     img <- readAsMat imgPath
 
-    putStrLn $ "draw random patches"
+    putStrLn "draw random patches"
     patches <- replicateM 100 (randomPatch 16 img)
 
 
@@ -146,13 +145,13 @@ main = do
 
 
     let results = iterate (uncurry3 (adjustPhis 0.14 0.8)) (patches',as,phis')
-    let (patches'',as'',phis'') = results !! 10
+    let (_,as'',phis'') = results !! 10
   
-    let imgs' = [ mat'2img 16 16 (as `scale'` φs) :: Image Float | as <- as'' | φs <- phis'' ]
+    let imgs' = [ mat'2img 16 16 (xs `scale'` φs) :: Image Float | xs <- as'' | φs <- phis'' ]
 
-    forM_ (zip [0..] imgs') $ \(i,img) -> do
+    forM_ (zip [(0::Int)..] imgs') $ \(i,im) -> do
       let fn = "/tmp/imgs/i" ++ show i ++ ".png"
-          img' = pixelMap (floor . (*255)) img :: Image Pixel8
+          img' = pixelMap (floor . (*255)) im :: Image Pixel8
       writePng fn img'
 
     putStrLn "done"
@@ -161,9 +160,10 @@ main = do
 adjustAs :: (Floating a, Ord a) => a -> Mat a -> [Mat a] -> [a] -> [a]
 adjustAs σ img φs as = snd $ diffTill σ img φs (diffTest img φs as)
 
+adjustFrom100Patches :: (Floating a, Ord a) => a -> [Mat a] -> [Mat a] -> [a] -> ([a], [Mat a])
 adjustFrom100Patches σ allPatches φs as = (as',rest)
     where (patches,rest) = splitAt 100 allPatches
-          as'        = foldl (\as i -> adjustAs σ i φs as) as patches
+          as'        = foldl (\xs i -> adjustAs σ i φs xs) as patches
 
 adjustPhis ::
   (Floating a, Ord a) =>
@@ -185,7 +185,7 @@ adjustPhis σ η allPatches as φs = (rs,as',φs')
 readAsMat :: FilePath -> IO (Matrix Float)
 readAsMat fn = do
     (Right (ImageY16 img)) <- readImage fn
-    let f = pixelMap ((/(2^^16-1)) . fromIntegral) $ img :: Image Float
+    let f = pixelMap ((/(2^^(16::Int)-1)) . fromIntegral) img :: Image Float
     return $ img2mat f
 
 randomPatch :: Int -> Matrix Float -> IO (Matrix Float)
@@ -204,7 +204,7 @@ createRandomPatchesFromImage imagePath = do
 
     -- convert in matrix
     let img :: Image Float
-        img = pixelMap ( (/(2^^16-1)) . fromIntegral ) raw
+        img = pixelMap ( (/(2^^(16::Int)-1)) . fromIntegral ) raw
         mat = img2mat img
 
     -- draw random submatrices
@@ -242,5 +242,5 @@ mat'2img w h m = Image w h (V.convert . unMat $ m)
 
 
 {-# INLINE uncurry3 #-}
-uncurry3 :: (a -> b -> c -> d) -> ((a, b, c) -> d)
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 uncurry3 f ~(a,b,c) = f a b c
