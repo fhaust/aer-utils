@@ -125,7 +125,7 @@ main :: IO ()
 main = do
 
 
-    let imgPath = "../../data/swiss/swiss0-white.png"
+    let imgPath = "data/swiss0-white.png"
 
     putStrLn "create 192 16x16 matrices"
     phis <- map single <$> replicateM 192 (randn 16 16)
