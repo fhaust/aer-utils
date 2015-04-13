@@ -146,7 +146,7 @@ main = do
     let patches' = concat . repeat . map mat2mat' $ patches
 
 
-    let results = iterate (uncurry3 (adjustPhis 0.14 0.8)) (patches',as,phis')
+    let results = iterate (uncurry3 (adjustPhis 0.14 0.2)) (patches',as,phis')
     {-let (_,as'',phis'') = results !! 10-}
   
     forM_ (zip [0..] results) $ \(i,(_,as,φs)) -> do
@@ -174,10 +174,10 @@ adjustPhis σ η allPatches as φs = (rs,as',φs')
           φs'        = [ φ `sub'` eq6 η r φs as' a | a <- as' | φ <- φs ]
 
 writePhiImages baseFn as φs = do
-    let imgs = [ mat'2img 16 16 (a `scale'` φ) :: Image Float | a <- as | φ <- φs ]
+    let imgs = [ (i,a,mat'2img 16 16 (a `scale'` φ) :: Image Float) | a <- as | φ <- φs | i <- [0..] ]
 
-    forM_ (zip [(0::Int)..] imgs) $ \(ix,im) -> do
-      let fn = baseFn ++ "/img-" ++ show ix ++ ".png"
+    forM_ imgs $ \(ix,a,im) -> do
+      let fn = baseFn ++ "/img-" ++ show ix ++ "-a-" ++ show a ++ ".png"
           img' = pixelMap (floor . (*255)) im :: Image Pixel8
       writePng fn img'
 
