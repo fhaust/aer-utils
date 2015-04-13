@@ -50,7 +50,8 @@ executable learngabors
                        JuicyPixels,
                        hmatrix,
                        bytestring,
-                       ad
+                       ad,
+                       directory
   main-is:             Data/AER/EBCCSP15.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
                        -- -fllvm -optlo-O3

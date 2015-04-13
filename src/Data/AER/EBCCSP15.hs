@@ -23,6 +23,8 @@ import           Control.Monad hiding (forM_,mapM,mapM_)
 
 import           Codec.Picture
 
+import           System.Directory
+
 
 {-import           Debug.Trace-}
 
@@ -145,14 +147,13 @@ main = do
 
 
     let results = iterate (uncurry3 (adjustPhis 0.14 0.8)) (patches',as,phis')
-    let (_,as'',phis'') = results !! 10
+    {-let (_,as'',phis'') = results !! 10-}
   
-    let imgs' = [ mat'2img 16 16 (xs `scale'` φs) :: Image Float | xs <- as'' | φs <- phis'' ]
-
-    forM_ (zip [(0::Int)..] imgs') $ \(i,im) -> do
-      let fn = "/tmp/imgs/i" ++ show i ++ ".png"
-          img' = pixelMap (floor . (*255)) im :: Image Pixel8
-      writePng fn img'
+    forM_ (zip [0..] results) $ \(i,(_,as,φs)) -> do
+      putStrLn $ "iteration " ++ show i
+      let baseFn = "output/iter-" ++ show i
+      createDirectoryIfMissing True baseFn
+      writePhiImages baseFn as φs
 
     putStrLn "done"
 
@@ -171,6 +172,14 @@ adjustPhis ::
 adjustPhis σ η allPatches as φs = (rs,as',φs')
     where (as',r:rs) = adjustFrom100Patches σ allPatches φs as
           φs'        = [ φ `sub'` eq6 η r φs as' a | a <- as' | φ <- φs ]
+
+writePhiImages baseFn as φs = do
+    let imgs = [ mat'2img 16 16 (a `scale'` φ) :: Image Float | a <- as | φ <- φs ]
+
+    forM_ (zip [(0::Int)..] imgs) $ \(ix,im) -> do
+      let fn = baseFn ++ "/img-" ++ show ix ++ ".png"
+          img' = pixelMap (floor . (*255)) im :: Image Pixel8
+      writePng fn img'
 
 {-learngabors σ η allPatches = scanl (\(-}
 
