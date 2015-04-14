@@ -25,6 +25,8 @@ import           Codec.Picture
 
 import           System.Directory
 
+import           Control.Parallel.Strategies
+
 
 {-import           Debug.Trace-}
 
@@ -171,7 +173,7 @@ adjustPhis ::
   a -> a -> [Mat a] -> [a] -> [Mat a] -> ([Mat a], [a], [Mat a])
 adjustPhis σ η allPatches as φs = (rs,as',φs')
     where (as',r:rs) = adjustFrom100Patches σ allPatches φs as
-          φs'        = [ φ `add'` eq6 η r φs as' a | a <- as' | φ <- φs ]
+          φs'        = [ φ `add'` eq6 η r φs as' a | a <- as' | φ <- φs ] `using` parListChunk 8 rseq
 
 writePhiImages baseFn as φs = do
     let imgs = [ (i,a,mat'2img 16 16 (a `scale'` φ) :: Image Float) | a <- as | φ <- φs | i <- [0..] ]
