@@ -22,6 +22,11 @@ library
                        vector-space,
                        thyme,
                        containers,
+                       parallel,
+                       ad,
+                       JuicyPixels,
+                       directory,
+                       hmatrix,
                        MemoTrie,
                        split,
                        random,
@@ -29,8 +34,9 @@ library
                        dtw,
                        GA,
                        vector
-  exposed-modules:     Data.AER.Similarity
-  ghc-options:         -O2 -Wall -fllvm
+  exposed-modules:     Data.AER.EBCCSP15
+  ghc-options:         -O2 -Wall 
+                       -- -fllvm
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -43,7 +49,6 @@ executable learngabors
                        split,
                        random,
                        MonadRandom,
-                       dtw,
                        GA,
                        vector,
                        parallel,
@@ -58,8 +63,8 @@ executable learngabors
                        -threaded 
                        -rtsopts 
                        -- -eventlog
-                       ---fprof-auto -prof
-                       --"-with-rtsopts=-N -p -s -h -i0.1 -T"
+                       -fprof-auto 
+                       -- "-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -80,40 +85,42 @@ executable motionflow
                        lens
   main-is:             Data/AER/MotionFlow.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
-                       -fllvm -optlo-O3
+                       -- -fllvm -optlo-O3
                        -threaded 
                        -rtsopts 
                        -- -eventlog
-                       -fprof-auto -prof
+                       -fprof-auto
                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
 
 test-suite maintest
   type:                exitcode-stdio-1.0
-  hs-source-dirs:      src,test
+  hs-source-dirs:      test
   main-is:             TestMain.hs
   build-depends:       base,
                        aer,
+                       aer-utils,
                        vector-space,
                        thyme,
                        containers,
                        test-framework,
                        test-framework-quickcheck2,
-                       QuickCheck < 2.8,
-                       MemoTrie,
-                       random
-  ghc-options:         -O2 -Wall -fllvm
+                       test-framework-hunit,
+                       QuickCheck,
+                       HUnit,
+                       HUnit-approx,
+                       random,
+                       directory,
+                       JuicyPixels,
+                       hmatrix,
+                       parallel,
+                       vector,
+                       MonadRandom,
+                       split,
+                       ad
+  ghc-options:         -O2 -Wall 
+                       -- -fllvm
   hs-source-dirs:      src
   default-language:    Haskell2010
 
---executable glossaer
---  main-is:             GlossAER.hs
---  -- other-modules:       
---  -- other-extensions:    
---  build-depends:       base >=4.7 && <4.8,
---                       aer,
---                       kdtree
---  ghc-options:         -O2 -Wall -fexcess-precision
---  hs-source-dirs:      src
---  default-language:    Haskell2010
