@@ -7,7 +7,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DataKinds #-}
 
-module Data.AER.EBCCSP15 where
+module Main (main) where
 
 
 import           Data.Foldable
@@ -21,23 +21,24 @@ import           Data.List
 import           Data.List.Split
 
 import           Data.Proxy
+import           Data.SimpleMat
 
-import           Numeric.LinearAlgebra.HMatrix
 import           Numeric.AD
 
 import           Control.Monad.Random
+import           Control.Monad.State
+import           Control.Monad.Fix
 import           Control.Monad hiding (forM_,mapM,mapM_)
 
 import           Codec.Picture
 
 import           System.Directory
 
-import           Control.Parallel.Strategies
 
 import           GHC.TypeLits
 
 
-{-import           Debug.Trace-}
+import           Debug.Trace
 
 
 
@@ -49,66 +50,13 @@ f <$$> x = fmap (fmap f) x
 
 -----------------------------------------------------------------------------
 
-newtype Mat (w :: Nat) (h :: Nat) a = Mat { unMat :: B.Vector a } deriving (Functor,Show,Read)
-
 type Img w h a = Mat w h a
 type Phi w h a = Mat w h a
 
-instance Num a => Num (Mat (w :: Nat) (h :: Nat) a) where
-    (+) (Mat a) (Mat b) = Mat $ V.zipWith (+) a b
-    (-) (Mat a) (Mat b) = Mat $ V.zipWith (-) a b
-    (*) (Mat a) (Mat b) = Mat $ V.zipWith (*) a b
-    negate (Mat a)      = Mat $ V.map negate a
-    abs    (Mat a)      = Mat $ V.map abs a
-    signum (Mat a)      = Mat $ V.map signum a
-    fromInteger a       = Mat $ V.replicate 64 (fromInteger a)
-    {-# INLINABLE (+) #-}
-    {-# INLINABLE (-) #-}
-    {-# INLINABLE (*) #-}
-    {-# INLINABLE negate #-}
-    {-# INLINABLE abs #-}
-    {-# INLINABLE signum #-}
-
-scale' :: Num a => a -> Mat w h a -> Mat w h a 
-scale' f = Mat . V.map (*f) . unMat
-{-# INLINABLE scale' #-}
-
-add' :: Num a => Mat w h a -> Mat w h a -> Mat w h a
-add' a b = Mat $ V.zipWith (+) (unMat a) (unMat b)
-sub' :: Num a => Mat w h a -> Mat w h a -> Mat w h a
-sub' a b = Mat $ V.zipWith (-) (unMat a) (unMat b)
-mul' :: Num a => Mat w h a -> Mat w h a -> Mat w h a
-mul' a b = Mat $ V.zipWith (*) (unMat a) (unMat b)
-pow' :: (Integral b, Num a) => Mat w h a -> b -> Mat w h a
-pow' a e = Mat $ V.map (^e) (unMat a)
-
-norm' (Mat a) = sqrt . V.sum $ V.zipWith (*) a a
-
-variance' :: Fractional a => Mat w h a -> a
-variance' (Mat a) = vecVariance a
-
-vecVariance a = V.sum (V.map (\x -> (x - mean)^(2::Int)) a) / len
-  where mean = vecMean a
-        len  = fromIntegral $ V.length a
-
-vecMean a = V.sum a / fromIntegral (V.length a)
-
-sumElems' :: Num a => Mat w h a -> a
-sumElems' = V.sum . unMat
-
-zipWith' :: (a -> b -> c) -> Mat w h a -> Mat w h b -> Mat w h c
-zipWith' f (Mat a) (Mat b) = Mat $ V.zipWith f a b
-
-fromList' :: [a] -> Mat w h a
-fromList' l = Mat $ V.fromList l
-
-{-subMat' :: Int -> Int -> Int -> Int -> Mat a -> Mat a-}
-{-subMat' ox oy w h = -}
-
---------------------------------------------------
+-------------------------------------------------
 
 reconstruct :: Num a => [a] -> [Phi w h a] -> Img w h a
-reconstruct as φs = sum [ a `scale'` φ | a <- as | φ <- φs ]
+reconstruct as φs = sum [ a `scale` φ | a <- as | φ <- φs ]
 
 sparseness :: Floating a => a -> a -> a
 sparseness σ a = s (a / σ) where s x = log (1+x*x)
@@ -136,8 +84,8 @@ residualError imgs ass φs = [ img - reconstruct as φs | img <- imgs | as <- as
 
 updateBases ::
   (Fractional a, Num a) => [Mat w h a] -> [[a]] -> [Mat w h a]
-updateBases es ass = map (le `scale'`) dA
-    where dA = foldl1' (zipWith (+)) [[ a `scale'` e | a <- as ] | e <- es | as <- ass ]
+updateBases es ass = map (le `scale`) dA
+    where dA = foldl1' (zipWith (+)) [[ a `scale` e | a <- as ] | e <- es | as <- ass ]
           le = 1 / genericLength es
 
 -- this code corresponds to line 71-78 in the sparsenet code
@@ -157,51 +105,140 @@ adjustGain α vars gain = zipWith (*) gain (map ((**α) . (/varGoal)) vars)
 
 
 adjustPhiVariance :: Fractional a => [a] -> [a] -> [Phi w h a] -> [Phi w h a]
-adjustPhiVariance gains norms φs = zipWith3 (\g n φ -> (g/n) `scale'` φ) gains norms φs
+adjustPhiVariance gains norms φs = zipWith3 (\g n φ -> (g/n) `scale` φ) gains norms φs
 
-adjustPhisForVariance α vars gain ass φs = 
+adjustPhisForVariance ::
+  MonadState (IterationState Double) m =>
+  Double -> [[Double]] -> [Mat 8 8 Double] -> m ()
+adjustPhisForVariance α ass φs = do
+
+    -- get old values ... no idea if this is really necessary
+    -- but it is done in the olshausen code (probably without him being
+    -- aware of it)
+    vars <- isVars <$> get
+    gain <- isGain <$> get
+
     let vars' = adjustAVars vars ass
-        normA = map norm' φs
+        normA = map norm φs
         gain' = adjustGain α vars' gain
-    in adjustPhiVariance gain' normA φs
+        phis' = adjustPhiVariance gain' normA φs
+
+    modify' (\s -> s { isVars = vars', isGain = gain', isPhis = phis' })
 
 ----
 
 
---oneIteration ::
---  (Floating a, Ord a) => a -> a -> a -> [Img w h a] -> [Phi w h a] -> [Phi w h a]
---oneIteration λ σ η imgs φs =
---    let ass  = [ initialAs img φs | img <- imgs ]
---        ass' = [ findAsForImg λ σ img φs as !! 10 | img <- imgs | as <- ass ]
---        es   = residualError imgs ass' φs
---        dφs  = updateBases es ass'
---    in [ φ - η `scale'` dφ | φ <- φs | dφ <- dφs ]
+data IterationState a = IS 
+    { isVars :: ! [a]
+    , isGain :: ! [a]
+    , isImgs :: ! [Img 512 512 a]
+    , isPhis :: ! [Phi 8 8 a]
+    , isIteration :: ! Int
+    }
 
---oneIteration imgs = do
+mkInitialIS imgs φs = IS
+    { isVars = replicate 64 varGoal
+    , isGain = map norm φs
+    , isImgs = imgs
+    , isPhis = φs
+    , isIteration = 0
+    }
 
---    -- choose an image for this batch
---    img <- uniform imgs
+oneIteration :: (MonadIO m, MonadRandom m, MonadState (IterationState Double) m)
+             => Double -> Double -> Double -> m ()
+oneIteration α λ σ = do
 
---    -- extract subimages at random from this image to make data vector X
+    -- choose an image for this batch
+    imgs <- isImgs <$> get
+    img <- uniform imgs
+
+    -- get phis
+    φs <- isPhis <$> get
+
+    -- extract subimages at random from this image to make data vector X
+    patches <- replicateM 100 (randomPatch img)
+
+    let ps' = map (fmap (*0.5).(+1)) patches
+    liftIO $ writePhisToPng "output/cur-patches.png" ps'
+
+
+    -- calculate coefficients for these data via conjugate gradient routine
+    let initAs    = [ initialAs patch φs | patch <- patches ]
+        fittedAs  = [ findAsForImg λ σ patch φs as !! 10 | patch <- patches | as <- initAs ]
+
+    -- calculate residual error
+    let err = residualError patches fittedAs φs
+
+    -- update bases
+    let deltaφs = updateBases err fittedAs
+
+    -- normalize bases
+    -- (there is some state hidden here)
+    adjustPhisForVariance α fittedAs deltaφs
+
 
 
 main :: IO ()
 main = do
 
-    let numPatches = 100
-
-    imgs <- readCSVMat "data/mats/x.csv" :: IO [Img 512 512 Double]
-    phis <- readCSVMat "data/mats/a.csv" :: IO [Phi 64 64 Double]
-
-    let λ = 100
+    -- magic numbers from olshausen code
+    let α = 0.02
+        λ = 100
         σ = 0.316
-        η = 1
-    --let phis' = oneIteration λ σ η imgs phis
 
-    --print phis'
+    -- generate random φs
+    {-φs <- evalRandIO $ replicateM 64 randomPhi :: IO [Phi 8 8 Double]-}
+    φs <- readCSVMats "data/mats/a.csv" :: IO [Phi 8 8 Double]
 
+    -- read in images
+    let imageNames = [ "data/mats/images/img" ++ show n ++ ".csv" | n <- [0..9::Int] ]
+    images <- mapM readCSVImage imageNames :: IO [Img 512 512 Double]
+
+    -- initialize state
+    let isState = mkInitialIS images φs
+            
+    let phis = isPhis isState
+    writePhisToPng "output/iter-X.png" phis
+
+    -- run iteration
+    gen <- getStdGen
+    _ <- evalRandT (execStateT (runLearnGabors α λ σ) isState) gen
+
+    
+    {-evalRandIO (execStateT stuff isState)-}
 
     putStrLn "done"
+
+runLearnGabors α λ σ = forever go
+    where go = do
+            i <- isIteration <$> get
+            liftIO $ putStrLn $ "iteration: " ++ show i
+
+            oneIteration α λ σ
+
+            phis <- isPhis <$> get
+
+            let dir = "output/iter-" ++ show i ++ "/"
+            {-liftIO $ createDirectoryIfMissing True dir-}
+            {-forM_ (zip [0..] phis) $ \(i,φ) -> -}
+            {-    liftIO $ writeCSVImage (dir ++ "phi-" ++ show i ++ ".csv") φ-}
+
+            -- create image from mats 
+            liftIO $ writePhisToPng ("output/iter-" ++ show i ++ ".png") phis
+
+            modify' (\s -> s { isIteration = i + 1 })
+
+
+writePhisToPng fn phis = writePng fn img
+  where phis' = map (fmap (floor . (*255))) phis
+        img   = concatMatsInImage phis' :: Image Pixel8
+
+concatMatsInImage :: forall w h a. (KnownNat w, KnownNat h, Pixel a)
+                  => [Mat w h a] -> Image a
+concatMatsInImage ms = generateImage (index m) 64 64
+    where rs = map concatHor . chunksOf 8 $ ms :: [Mat 64 8 a]
+          m  = concatVer rs :: Mat 64 64 a
+
 
 
 --------------------------------------------------
@@ -212,13 +249,23 @@ main = do
 --    let f = pixelMap ((/(2^^(16::Int)-1)) . fromIntegral) img :: Image Float
 --    return $ img2mat f
 
---randomPatch :: Int -> Matrix Float -> IO (Matrix Float)
---randomPatch s m = do
---    let t = s `div` 2
---    c <- randomRIO (t, cols m - t)
---    r <- randomRIO (t, rows m - t)
+randomPatch :: forall w h a w' h' m. (KnownNat w, KnownNat h, KnownNat w', KnownNat h', MonadRandom m)
+            => Mat w h a -> m (Mat w' h' a)
+randomPatch m = do
+    let w' = fromInteger $ natVal (Proxy :: Proxy w')
+        h' = fromInteger $ natVal (Proxy :: Proxy h')
 
---    return $ subMatrix (r-t,c-t) (s,s) m
+    -- get random offsets
+    ox <- getRandomR (0, width m  - w' - 1)
+    oy <- getRandomR (0, height m - h' - 1)
+
+    -- return sub matrix
+    return $ subMat ox oy m
+
+randomPhi :: (KnownNat w, KnownNat h, Random a, MonadRandom m, MonadFix m) => m (Mat w h a)
+randomPhi = mfix $ \m -> do
+    let s = width m * height m
+    Mat <$> V.replicateM s getRandom
 
 --createRandomPatchesFromImage :: FilePath -> IO () 
 --createRandomPatchesFromImage imagePath = do
@@ -247,22 +294,12 @@ main = do
 
 --------------------------------------------------
 
-
-mat2img :: Element (PixelBaseComponent a) 
-        => Matrix (PixelBaseComponent a) -> Image a
-mat2img m = Image (cols m) (rows m) (flatten m)
-img2mat :: S.Storable (PixelBaseComponent a) 
-        => Image a -> Matrix (PixelBaseComponent a)
-img2mat i = reshape (imageWidth i) $ imageData i
-
-
-mat2mat' :: Element a => Matrix a -> Mat w h a
-mat2mat' m = Mat . V.convert $ flatten m
-
-mat'2img ::
-  S.Storable (PixelBaseComponent a) =>
-  Int -> Int -> Mat w h (PixelBaseComponent a) -> Image a
-mat'2img w h m = Image w h (V.convert . unMat $ m)
+readCSVMats :: forall w h a. (KnownNat w, KnownNat h, Read a) => FilePath -> IO [Mat w h a]
+readCSVMats fn = do
+    f <- readFile fn
+    let ls = lines f
+        ms = map (mkMat . map read . splitOn "," ) ls
+    return ms
 
 
 readCSVMat :: forall w h a. (KnownNat w, Read a) => FilePath -> IO [Mat w h a]
@@ -279,14 +316,6 @@ readCSVVec n fp = do
     f <- readFile fp
     let ds =  map read . filter (/= "") . splitWhen (\x -> elem x ("\n," :: String)) $ f
     return $ map UV.fromList $ chunksOf n ds
-
-readCSVImage :: (UV.Unbox a, Read a) => FilePath -> IO (Mat w h a)
-readCSVImage fp = do
-    f <- readFile fp
-    let w  = fromInteger $ natVal (Proxy :: Proxy w)
-        h  = fromInteger $ natVal (Proxy :: Proxy h)
-        ds = map read . filter (/= "") . splitWhen (\x -> elem x ("\n," :: String)) $ f
-    return . Mat . V.fromListN (w*h) $ ds
 
 
 {-# INLINE uncurry3 #-}

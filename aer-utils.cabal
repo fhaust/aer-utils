@@ -16,29 +16,30 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 
-library
-  build-depends:       base >= 4.8 && < 4.9,
-                       aer,
-                       vector-space,
-                       thyme,
-                       containers,
-                       parallel,
-                       ad,
-                       JuicyPixels,
-                       directory,
-                       hmatrix,
-                       MemoTrie,
-                       split,
-                       random,
-                       MonadRandom,
-                       dtw,
-                       GA,
-                       vector
-  exposed-modules:     Data.AER.EBCCSP15
-  ghc-options:         -O2 -Wall 
-                       -- -fllvm
-  hs-source-dirs:      src
-  default-language:    Haskell2010
+--library
+--  build-depends:       base >= 4.8 && < 4.9,
+--                       aer,
+--                       vector-space,
+--                       thyme,
+--                       containers,
+--                       parallel,
+--                       ad,
+--                       JuicyPixels,
+--                       directory,
+--                       hmatrix,
+--                       MemoTrie,
+--                       split,
+--                       random,
+--                       MonadRandom,
+--                       dtw,
+--                       GA,
+--                       vector,
+--                       mtl
+--  exposed-modules:     Data.AER.EBCCSP15
+--  ghc-options:         -O2 -Wall 
+--                       -- -fllvm
+--  hs-source-dirs:      src
+--  default-language:    Haskell2010
 
 executable learngabors
   build-depends:       base >= 4.8 && < 4.9,
@@ -56,14 +57,16 @@ executable learngabors
                        hmatrix,
                        bytestring,
                        ad,
-                       directory
-  main-is:             Data/AER/EBCCSP15.hs
+                       directory,
+                       mtl
+  main-is:             Data/AER/Main.hs
   ghc-options:         -O2 -Wall -funbox-strict-fields -fexcess-precision
                        -- -fllvm -optlo-O3
                        -threaded 
                        -rtsopts 
                        -- -eventlog
                        -fprof-auto 
+                       -auto-all -caf-all
                        -- "-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
