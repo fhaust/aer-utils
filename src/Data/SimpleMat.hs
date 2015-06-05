@@ -3,36 +3,51 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GADTs #-}
 
 module Data.SimpleMat where
 
 
 import           GHC.TypeLits
 import           GHC.Stack
+import           GHC.Exts
 
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as U
 
 import           Data.Proxy
 import           Data.List
 import           Data.List.Split
 
+import           Control.Monad.Zip
+
 {-import           Debug.Trace-}
 
 
-newtype Mat (w :: Nat) (h :: Nat) a = Mat { unMat :: V.Vector a } deriving (Show,Read)
+newtype Mat (w :: Nat) (h :: Nat) a where
+    Mat :: (Int -> Int -> a) -> Mat w h a
+
+index :: Mat w h a -> Int -> Int -> a
+index (Mat ix) = ix
+{-# INLINABLE index #-}
+
+instance (KnownNat w, KnownNat h, Show a) => Show (Mat w h a) where
+    show m = "fromList " ++ show (toList m)
+
 
 instance Functor (Mat w h) where
-    fmap f (Mat v) = Mat $ V.map f v
+    fmap f (Mat ix) = Mat $ \x y -> f $ ix x y
     {-# INLINABLE fmap #-}
 
 instance Num a => Num (Mat (w :: Nat) (h :: Nat) a) where
-    (+) (Mat a) (Mat b) = Mat $ V.zipWith (+) a b
-    (-) (Mat a) (Mat b) = Mat $ V.zipWith (-) a b
-    (*) (Mat a) (Mat b) = Mat $ V.zipWith (*) a b
-    negate (Mat a)      = Mat $ V.map negate a
-    abs    (Mat a)      = Mat $ V.map abs a
-    signum (Mat a)      = Mat $ V.map signum a
-    fromInteger a       = Mat $ V.replicate 64 (fromInteger a)
+    (+) (Mat f) (Mat g) = Mat $ \x y -> f x y + g x y
+    (-) (Mat f) (Mat g) = Mat $ \x y -> f x y - g x y
+    (*) (Mat f) (Mat g) = Mat $ \x y -> f x y * g x y
+    negate (Mat f)      = Mat $ \x y -> negate $ f x y
+    abs    (Mat f)      = Mat $ \x y -> abs $ f x y
+    signum (Mat f)      = Mat $ \x y -> signum $ f x y
+    fromInteger a       = Mat $ \_ _ -> fromInteger a
     {-# INLINABLE (+) #-}
     {-# INLINABLE (-) #-}
     {-# INLINABLE (*) #-}
@@ -41,43 +56,67 @@ instance Num a => Num (Mat (w :: Nat) (h :: Nat) a) where
     {-# INLINABLE signum #-}
     {-# INLINABLE fromInteger #-}
 
+instance (KnownNat w, KnownNat h) => IsList (Mat w h a) where
+    type Item (Mat w h a) = a
+    fromList ls = m
+      where m = Mat $ \x y -> ls !! (x + y * w)
+            w = width m
+    toList m = [ index m x y | (x,y) <- indices m ]
+
+instance (KnownNat w, KnownNat h) => Foldable (Mat w h) where
+    foldMap f m = foldMap f . toList $ m
+    foldr f i m = foldr f i . toList $ m
+
+indices m = [ (x,y) | y <- [0..w-1] , x <- [0..h-1] ]
+    where w = width m
+          h = height m
+{-# INLINABLE indices #-}
+
 scale :: Num a => a -> Mat w h a -> Mat w h a 
-scale f = Mat . V.map (*f) . unMat
+scale f (Mat ix) = Mat $ \x y -> f * ix x y
 {-# INLINABLE scale #-}
 
-norm :: Floating c => Mat t t1 c -> c
-norm (Mat a) = sqrt . V.sum $ V.zipWith (*) a a
+norm :: (KnownNat w, KnownNat h, Floating a) => Mat w h a -> a
+norm m = sqrt . sum $ (m * m)
 {-# INLINABLE norm #-}
 
-variance :: Fractional a => Mat w h a -> a
-variance (Mat a) = vecVariance a
-
-
-vecVariance :: Fractional a => V.Vector a -> a
-vecVariance a = V.sum (V.map (\x -> (x - mean)^(2::Int)) a) / len
-  where mean = vecMean a
-        len  = fromIntegral $ V.length a
+variance :: (KnownNat w, KnownNat h, Fractional a) => Mat w h a -> a
+variance as = acc / len
+  where mean      = genericMean as
+        (acc,len) = foldl' (\(s,c) a -> (s + (a-mean)^(2::Int),c+1)) (0,0) as
+{-# INLINABLE variance #-}
 
 vecMean :: Fractional a => V.Vector a -> a
 vecMean a = V.sum a / fromIntegral (V.length a)
+{-# INLINABLE vecMean #-}
 
-sumElems' :: Num a => Mat w h a -> a
-sumElems' = V.sum . unMat
+genericMean :: (Foldable t, Fractional a) => t a -> a
+genericMean as = acc / len
+    where (acc,len) = foldl' (\(s,c) a -> (s+a,c+1)) (0,0) as
+{-# INLINABLE genericMean #-}
+
+sumElems' :: (KnownNat w, KnownNat h, Num a) => Mat w h a -> a
+sumElems' = sum
 {-# INLINABLE sumElems' #-}
 
-zipWith' :: (a -> b -> c) -> Mat w h a -> Mat w h b -> Mat w h c
-zipWith' f (Mat a) (Mat b) = Mat $ V.zipWith f a b
-{-# INLINABLE zipWith' #-}
+zipWith :: (a -> b -> c) -> Mat w h a -> Mat w h b -> Mat w h c
+zipWith f (Mat g) (Mat h) = Mat $ \x y -> f (g x y) (h x y)
+{-# INLINABLE zipWith #-}
 
-fromList' :: [a] -> Mat w h a
-fromList' l = Mat $ V.fromList l
+mkMatU :: forall w h a. (KnownNat w, KnownNat h, U.Unbox a) => [a] -> Mat w h a
+mkMatU as | w*h == length as = m
+          | otherwise      = error "invalid matrix size"
+  where m = Mat $ \x y -> (U.fromListN (w*h) as) U.! (x + y * w)
+        w = width m
+        h = height m
+{-# INLINABLE mkMatU #-}
 
-mkMat :: forall w h a. (KnownNat w, KnownNat h) => [a] -> Mat w h a
-mkMat as | s == length as = m
-         | otherwise      = error "invalid matrix size"
-  where m = Mat $ V.fromListN s as
-        s = width m * height m
-{-# INLINABLE mkMat #-}
+manifestU :: (KnownNat w, U.Unbox a) => Mat w h a -> Mat w h a
+manifestU m@(Mat f) = Mat $ \x y -> v U.! (x + y * w)
+    where w = width m
+          h = width m
+          v = U.generate (w*h) (\i -> let (y,x) = i `divMod` w in f x y)
+{-# INLINABLE manifestU #-}
 
 width :: forall w h a. KnownNat w => Mat w h a -> Int
 width _ = fromInteger $ natVal (Proxy :: Proxy w)
@@ -87,27 +126,20 @@ height :: forall w h a. KnownNat h => Mat w h a -> Int
 height _ = fromInteger $ natVal (Proxy :: Proxy h)
 {-# INLINABLE height #-}
 
-index :: forall w h a. KnownNat w => Mat w h a -> Int -> Int -> a
-index m@(Mat v) x y = v V.! ( x + y * width m)
-{-# INLINABLE index #-}
-
-
-
-row :: KnownNat w => Int -> Mat w h a -> V.Vector a 
-row y m@(Mat v) = V.slice (y*w) w v
-  where w = width m
+row :: KnownNat w => Int -> Mat w h a -> Mat w 1 a
+row y (Mat f) = Mat $ \x _ -> f x y
 {-# INLINABLE row #-}
 
-rows :: (KnownNat w, KnownNat h) => Mat w h a -> [V.Vector a]
+rows :: (KnownNat w, KnownNat h) => Mat w h a -> [Mat w 1 a]
 rows m@(Mat _) = [ row y m | y <- [0..h-1]]
   where h = height m
 {-# INLINABLE rows #-}
 
 subMat :: (KnownNat w, KnownNat h, KnownNat w', KnownNat h') 
        => Int -> Int -> Mat w h a -> Mat w' h' a
-subMat ox oy m@(Mat v) | valid     = newM
+subMat ox oy m@(Mat f) | valid     = newM
                        | otherwise = errorWithStackTrace $ "invalid offset or size: " ++ show (ox,oy,newW,newH)
-    where newM = Mat $ V.concat [ V.slice (y*oldW+ox) newW v | y <- [oy..oy+newH-1]]
+    where newM = Mat $ \x y -> f (x+ox) (y+oy)
           valid = ox + newW <= oldW && oy + newH <= oldH
           newW = width newM
           newH = height newM
@@ -119,24 +151,27 @@ subMat ox oy m@(Mat v) | valid     = newM
 
 -- FIXME no static guarantees here yet
 
-concatHor :: forall w h w' h' a. (KnownNat w, KnownNat h) 
-          => [Mat w h a] -> Mat w' h' a
-concatHor = Mat . V.concat . foldl1' (zipWith (V.++)) . map rows
+concatHor :: forall w h w' h' a. KnownNat w => [Mat w h a] -> Mat w' h' a
+concatHor ms = Mat $ \x y -> let w       = fromInteger $ natVal (Proxy :: Proxy w) 
+                                 (dx,mx) = x `divMod` w 
+                             in index (ms !! dx) mx y
 
-concatVer :: [Mat w h a] -> Mat w' h' a
-concatVer = Mat . V.concat . map unMat
+concatVer :: forall w h w' h' a. KnownNat h => [Mat w h a] -> Mat w' h' a
+concatVer ms = Mat $ \x y -> let h = fromInteger $ natVal (Proxy :: Proxy h)
+                                 (dy,my) = y `divMod` h
+                             in index (ms !! dy) x my
 
 --------------------------------------------------
 
-readCSVImage :: forall w h a. (Read a, KnownNat w, KnownNat h)
+readCSVImage :: forall w h a. (KnownNat w, KnownNat h, U.Unbox a, Read a)
              => FilePath -> IO (Mat w h a)
 readCSVImage fp = do
     f <- readFile fp
     let w  = fromInteger $ natVal (Proxy :: Proxy w)
         h  = fromInteger $ natVal (Proxy :: Proxy h)
         ds = map read . filter (/= "") . splitWhen (\x -> elem x ("\n," :: String)) $ f
-    return . Mat . V.fromListN (w*h) $ ds
+    return . mkMatU $ ds
 
 writeCSVImage ::
   (Show a, KnownNat w, KnownNat h) => FilePath -> Mat w h a -> IO ()
-writeCSVImage fp m = writeFile fp $ unlines $ map (intercalate "," . map show . V.toList) $ rows m
+writeCSVImage fp m = writeFile fp $ unlines $ map (intercalate "," . map show . toList) $ rows m
