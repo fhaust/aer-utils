@@ -24,6 +24,7 @@ import           Data.Proxy
 import           Data.SimpleMat
 
 import           Numeric.AD
+import           Numeric.FastMath
 
 import           Control.Monad.Random
 import           Control.Monad.State
@@ -87,7 +88,7 @@ findAsForImg' λ β σ patch φs = go . findAsForImg λ β σ patch φs
   where go (a:b:xs) | errDiff a b < 0.01 = b
                     | otherwise          = go (b:xs)
         errFun = errorFunction λ β σ patch φs
-        errDiff a b = abs ((errFun a) - (errFun b))
+        errDiff a b = abs (errFun a - errFun b)
 
 {-initialAs :: Fractional a => Patch a -> B.Vector (Phi a) -> As a-}
 {-initialAs patch = V.map go-}
@@ -126,7 +127,7 @@ adjustGain α vars gain = V.zipWith (*) gain (fmap ((**α) . (/varGoal)) vars)
 
 
 adjustPhiVariance :: Fractional a => B.Vector a -> B.Vector a -> B.Vector (Phi a) -> B.Vector (Phi a)
-adjustPhiVariance gains norms φs = V.zipWith3 (\g n φ -> (g/n) `scale` φ) gains norms φs
+adjustPhiVariance = V.zipWith3 (\g n φ -> (g/n) `scale` φ)
 
 adjustPhisForVariance ::
   MonadState (IterationState Double) m =>
@@ -234,7 +235,7 @@ learnGabors = do
 
     -- read in images
     let imageNames = [ "data/mats/images/img" ++ show n ++ ".csv" | n <- [0..9::Int] ]
-    images <- B.fromList <$> mapM (readCSVImage) imageNames :: IO (B.Vector (Img 512 512 Double))
+    images <- B.fromList <$> mapM readCSVImage imageNames :: IO (B.Vector (Img 512 512 Double))
 
     -- initialize state
     let isState = mkInitialIS φs
@@ -282,7 +283,7 @@ writePhisToPng fn phis = writePng fn img
   where phis' = map (fmap (floor . (*127) . (+1) . (/mm)) ) phis
         img   = concatMatsInImage phis' :: Image Pixel8
         mm    = max (abs $ minimum idata) (abs $ maximum idata)
-        idata = concat $ map toList phis
+        idata = concatMap toList phis
 
 concatMatsInImage :: forall w h a. (KnownNat w, KnownNat h, Pixel a)
                   => [Mat w h a] -> Image a
@@ -361,7 +362,7 @@ readCSVMats :: forall w h a. (KnownNat w, KnownNat h, UV.Unbox a, Read a)
             => FilePath -> IO (Mats w h a)
 readCSVMats fp = do
     f <- readFile fp
-    let ds =  map read . filter (/= "") . splitWhen (\x -> elem x ("\n," :: String)) $ f
+    let ds =  map read . filter (/= "") . splitWhen (\x -> x `elem` ("\n," :: String)) $ f
         w  = fromInteger $ natVal (Proxy :: Proxy w)
         h  = fromInteger $ natVal (Proxy :: Proxy h)
         s  = w * h
@@ -373,8 +374,8 @@ readCSVMats fp = do
 readCSVVec :: (UV.Unbox a, Read a) => FilePath -> IO (B.Vector a)
 readCSVVec fp = do
     f <- readFile fp
-    let ds =  map read . filter (/= "") . splitWhen (\x -> elem x ("\n," :: String)) $ f
-    return $ B.fromList $ ds
+    let ds =  map read . filter (/= "") . splitWhen (\x -> x `elem` ("\n," :: String)) $ f
+    return $ B.fromList ds
 
 readCSVVecs :: Read a => FilePath -> IO (B.Vector (B.Vector a))
 readCSVVecs fp = do
