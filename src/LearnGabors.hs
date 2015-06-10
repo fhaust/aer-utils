@@ -32,6 +32,8 @@ import           Control.Monad.Fix
 import           Control.Monad.Zip
 import           Control.Monad hiding (forM_,mapM,mapM_)
 
+import           Control.Parallel.Strategies
+
 import           Codec.Picture
 
 import           System.Directory
@@ -41,11 +43,6 @@ import           GHC.TypeLits
 
 
 import           Debug.Trace
-
------------------------------------------------------------------------------
-
--- magic variables from the sparsenet code
-alpha = 0.02
 
 -----------------------------------------------------------------------------
 
@@ -191,7 +188,7 @@ oneIteration imgs α β λ σ = do
 
     -- calculate coefficients for these data via conjugate gradient routine
     let initAs    = initialAs patches φs -- [ initialAs patch φs | patch <- patches ]
-        fittedAs  = [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
+        fittedAs  = withStrategy (parTraverse rdeepseq) [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
 
     -- calculate residual error
     let err = residualError patches fittedAs φs
