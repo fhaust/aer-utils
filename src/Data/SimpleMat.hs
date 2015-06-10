@@ -30,7 +30,7 @@ newtype Mat (w :: Nat) (h :: Nat) a where
 
 index :: Mat w h a -> Int -> Int -> a
 index (Mat ix) = ix
-{-# INLINABLE index #-}
+{-# INLINE index #-}
 
 instance (KnownNat w, KnownNat h, Show a) => Show (Mat w h a) where
     show m = "fromList " ++ show (toList m)
@@ -38,7 +38,7 @@ instance (KnownNat w, KnownNat h, Show a) => Show (Mat w h a) where
 
 instance Functor (Mat w h) where
     fmap f (Mat ix) = Mat $ \x y -> f $ ix x y
-    {-# INLINABLE fmap #-}
+    {-# INLINE fmap #-}
 
 instance Num a => Num (Mat (w :: Nat) (h :: Nat) a) where
     (+) (Mat f) (Mat g) = Mat $ \x y -> f x y + g x y
@@ -48,13 +48,13 @@ instance Num a => Num (Mat (w :: Nat) (h :: Nat) a) where
     abs    (Mat f)      = Mat $ \x y -> abs $ f x y
     signum (Mat f)      = Mat $ \x y -> signum $ f x y
     fromInteger a       = Mat $ \_ _ -> fromInteger a
-    {-# INLINABLE (+) #-}
-    {-# INLINABLE (-) #-}
-    {-# INLINABLE (*) #-}
-    {-# INLINABLE negate #-}
-    {-# INLINABLE abs #-}
-    {-# INLINABLE signum #-}
-    {-# INLINABLE fromInteger #-}
+    {-# INLINE (+) #-}
+    {-# INLINE (-) #-}
+    {-# INLINE (*) #-}
+    {-# INLINE negate #-}
+    {-# INLINE abs #-}
+    {-# INLINE signum #-}
+    {-# INLINE fromInteger #-}
 
 instance (KnownNat w, KnownNat h) => IsList (Mat w h a) where
     type Item (Mat w h a) = a
@@ -70,38 +70,38 @@ instance (KnownNat w, KnownNat h) => Foldable (Mat w h) where
 indices m = [ (x,y) | y <- [0..w-1] , x <- [0..h-1] ]
     where w = width m
           h = height m
-{-# INLINABLE indices #-}
+{-# INLINE indices #-}
 
 scale :: Num a => a -> Mat w h a -> Mat w h a 
 scale f (Mat ix) = Mat $ \x y -> f * ix x y
-{-# INLINABLE scale #-}
+{-# INLINE scale #-}
 
 norm :: (KnownNat w, KnownNat h, Floating a) => Mat w h a -> a
 norm m = sqrt . sum $ (m * m)
-{-# INLINABLE norm #-}
+{-# INLINE norm #-}
 
 variance :: (KnownNat w, KnownNat h, Fractional a) => Mat w h a -> a
 variance as = acc / len
   where mean      = genericMean as
         (acc,len) = foldl' (\(s,c) a -> (s + (a-mean)^(2::Int),c+1)) (0,0) as
-{-# INLINABLE variance #-}
+{-# INLINE variance #-}
 
 vecMean :: Fractional a => V.Vector a -> a
 vecMean a = V.sum a / fromIntegral (V.length a)
-{-# INLINABLE vecMean #-}
+{-# INLINE vecMean #-}
 
 genericMean :: (Foldable t, Fractional a) => t a -> a
 genericMean as = acc / len
     where (acc,len) = foldl' (\(s,c) a -> (s+a,c+1)) (0,0) as
-{-# INLINABLE genericMean #-}
+{-# INLINE genericMean #-}
 
 sumElems' :: (KnownNat w, KnownNat h, Num a) => Mat w h a -> a
 sumElems' = sum
-{-# INLINABLE sumElems' #-}
+{-# INLINE sumElems' #-}
 
 zipWith :: (a -> b -> c) -> Mat w h a -> Mat w h b -> Mat w h c
 zipWith f (Mat g) (Mat h) = Mat $ \x y -> f (g x y) (h x y)
-{-# INLINABLE zipWith #-}
+{-# INLINE zipWith #-}
 
 mkMatU :: forall w h a. (KnownNat w, KnownNat h, U.Unbox a) => [a] -> Mat w h a
 mkMatU as | w*h == length as = m
@@ -109,31 +109,31 @@ mkMatU as | w*h == length as = m
   where m = Mat $ \x y -> (U.fromListN (w*h) as) U.! (x + y * w)
         w = width m
         h = height m
-{-# INLINABLE mkMatU #-}
+{-# INLINE mkMatU #-}
 
 manifestU :: (KnownNat w, U.Unbox a) => Mat w h a -> Mat w h a
 manifestU m@(Mat f) = Mat $ \x y -> v U.! (x + y * w)
     where w = width m
           h = width m
           v = U.generate (w*h) (\i -> let (y,x) = i `divMod` w in f x y)
-{-# INLINABLE manifestU #-}
+{-# INLINE manifestU #-}
 
 width :: forall w h a. KnownNat w => Mat w h a -> Int
 width _ = fromInteger $ natVal (Proxy :: Proxy w)
-{-# INLINABLE width #-}
+{-# INLINE width #-}
 
 height :: forall w h a. KnownNat h => Mat w h a -> Int
 height _ = fromInteger $ natVal (Proxy :: Proxy h)
-{-# INLINABLE height #-}
+{-# INLINE height #-}
 
 row :: KnownNat w => Int -> Mat w h a -> Mat w 1 a
 row y (Mat f) = Mat $ \x _ -> f x y
-{-# INLINABLE row #-}
+{-# INLINE row #-}
 
 rows :: (KnownNat w, KnownNat h) => Mat w h a -> [Mat w 1 a]
 rows m@(Mat _) = [ row y m | y <- [0..h-1]]
   where h = height m
-{-# INLINABLE rows #-}
+{-# INLINE rows #-}
 
 subMat :: (KnownNat w, KnownNat h, KnownNat w', KnownNat h') 
        => Int -> Int -> Mat w h a -> Mat w' h' a
@@ -145,7 +145,7 @@ subMat ox oy m@(Mat f) | valid     = newM
           newH = height newM
           oldW = width m
           oldH = height m
-{-# INLINABLE subMat #-}
+{-# INLINE subMat #-}
 
 --------------------------------------------------
 
