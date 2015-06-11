@@ -22,6 +22,9 @@ import           Data.List.Split
 
 import           Control.Monad.Zip
 
+import           Codec.Picture
+import           Codec.Picture.Types
+
 {-import           Debug.Trace-}
 
 
@@ -175,3 +178,11 @@ readCSVImage fp = do
 writeCSVImage ::
   (Show a, KnownNat w, KnownNat h) => FilePath -> Mat w h a -> IO ()
 writeCSVImage fp m = writeFile fp $ unlines $ map (intercalate "," . map show . toList) $ rows m
+
+
+readHDRImg :: FilePath -> IO (Mat w h PixelF)
+readHDRImg fp = do
+    (Right (ImageRGBF rgbi)) <- readHDR fp
+    let i = extractLumaPlane rgbi :: Image PixelF
+        w = imageWidth i
+    return $ Mat $ \x y -> realToFrac $ pixelAt i x y
