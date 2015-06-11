@@ -7,7 +7,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MonadComprehensions #-}
 
-module LearnGabors (learnGabors) where
+module LearnGabors where
 
 
 import           Data.Foldable
@@ -24,7 +24,7 @@ import           Data.Proxy
 import           Data.SimpleMat
 
 import           Numeric.AD
-import           Numeric.FastMath
+{-import           Numeric.FastMath-}
 
 import           Control.Monad.Random
 import           Control.Monad.State
@@ -168,6 +168,7 @@ oneIteration imgs α β λ σ = do
 
     -- get iteration
     iteration <- isIteration <$> get
+    liftIO $ putStrLn $ "--- iteration: " ++ show iteration ++ " ---"
 
     -- choose an image for this batch
     img <- uniform $ toList imgs
@@ -182,31 +183,39 @@ oneIteration imgs α β λ σ = do
 
     -- extract subimages at random from this image to make data vector X
     patches <- B.replicateM 100 (randomPatch img)
+    liftIO $ do
+      writePhisToPng ("output/patches-" ++ show iteration ++ ".png") (toList patches)
+      putStrLn $ " → chose patches"
 
-    liftIO $ writePhisToPng ("output/patches-" ++ show iteration ++ ".png") (toList patches)
+
 
 
     -- calculate coefficients for these data via conjugate gradient routine
     let initAs    = initialAs patches φs -- [ initialAs patch φs | patch <- patches ]
-        fittedAs  = withStrategy (parTraverse rdeepseq) [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
+        fittedAs  = [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
 
     -- calculate residual error
     let err = residualError patches fittedAs φs
-    
-    liftIO $ writePhisToPng ("output/residual" ++ show iteration ++ ".png") (toList err)
+
+    liftIO $ do
+      writePhisToPng ("output/residual" ++ show iteration ++ ".png") (toList err)
+      putStrLn " → calculated residuals"
 
     -- update bases
     let deltaφs = updateBases err fittedAs
         η       = 1
 
-    modify' (\is -> is {isPhis = [ φ + η * dφ | φ <- isPhis is | dφ <- deltaφs ]})
-
     liftIO $ writePhisToPng ("output/deltaphis-"++ show iteration ++".png") (toList deltaφs)
+
+    modify' (\is -> is {isPhis = [ φ + η * dφ | φ <- isPhis is | dφ <- deltaφs ]})
+    liftIO $ putStrLn $ " → modified φs"
+
 
 
     -- normalize bases
     -- (there is some state hidden here)
     adjustPhisForVariance α fittedAs
+    liftIO $ putStrLn $ " → adjusted φs"
 
     {-nextφs <- isPhis <$> get-}
     {-liftIO $ writePhisToPng ("output/nextphis-"++ show iteration ++".png") (toList nextφs)-}
@@ -255,7 +264,6 @@ runLearnGabors ::
 runLearnGabors imgs α β λ σ = forever go
     where go = do
             i <- isIteration <$> get
-            liftIO $ putStrLn $ "iteration: " ++ show i
 
             oneIteration imgs α β λ σ
             modify' $ \s -> s {isPhis = manifestU <$> isPhis s}
@@ -400,3 +408,4 @@ instance MonadZip B.Vector where
 infixl 4 <$$>
 (<$$>) :: (Functor f0, Functor f1) => (a -> b) -> f0 (f1 a) -> f0 (f1 b)
 f <$$> x = fmap (fmap f) x
+{-# INLINE (<$$>) #-}
