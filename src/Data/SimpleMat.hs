@@ -21,6 +21,7 @@ import           Data.List
 import           Data.List.Split
 
 import           Control.Monad.Zip
+import           Control.Monad
 
 import           Codec.Picture
 import           Codec.Picture.Types
@@ -180,9 +181,16 @@ writeCSVImage ::
 writeCSVImage fp m = writeFile fp $ unlines $ map (intercalate "," . map show . toList) $ rows m
 
 
-readHDRImg :: FilePath -> IO (Mat w h PixelF)
+readHDRImg :: (KnownNat w, KnownNat h) => FilePath -> IO (Mat w h PixelF)
 readHDRImg fp = do
     (Right (ImageRGBF rgbi)) <- readHDR fp
-    let i = extractLumaPlane rgbi :: Image PixelF
-        w = imageWidth i
-    return $ Mat $ \x y -> realToFrac $ pixelAt i x y
+    let i  = extractLumaPlane rgbi :: Image PixelF
+        iw = imageWidth i
+        ih = imageHeight i
+        m  = Mat $ \x y -> realToFrac $ pixelAt i x y
+        mw = width m
+        mh = height m
+
+    when (mw /= iw || mh /= ih) $ errorWithStackTrace "image dimensions don't match"
+
+    return m
