@@ -41,6 +41,8 @@ import           Codec.Picture
 
 import           System.Directory
 
+import           ForwardVector
+
 
 import           GHC.TypeLits
 
@@ -62,17 +64,19 @@ type Ass      a = B.Vector (As      a)
 
 -------------------------------------------------
 
-reconstruct :: Num a => B.Vector a -> B.Vector (Phi a) -> Patch a
+reconstruct :: (Num a, Foldable f, MonadZip f) 
+            => f a -> f (Mat w h a) -> Mat w h a
 reconstruct as φs = sum [ a `scale` φ | a <- as | φ <- φs ]
 
 sparseness :: Floating a => a -> a -> a
 sparseness σ a = s (a / σ) where s x = log (1+x*x)
 
-preserveInfos :: Num a => Patch a -> B.Vector (Phi a) -> As a -> a
+preserveInfos :: (Foldable f, MonadZip f, KnownNat w, KnownNat h, Num a)
+              => Mat w h a -> f (Mat w h a) -> f a -> a
 preserveInfos patch φs as = sumElems' $ (patch - reconstruct as φs) ^ (2::Int)
 
-errorFunction ::
-  Floating a => a -> a -> a -> Patch a -> Phis a -> As a -> a
+errorFunction :: (Foldable t, MonadZip t, KnownNat w, KnownNat h, Floating a) 
+              => a -> a -> a -> Mat w h a -> t (Mat w h a) -> t a -> a
 errorFunction λ β σ patch φs as = λ * preserveInfos patch φs as + bos * sum [ sparseness σ a | a <- as ]
   where bos = β / σ
 
