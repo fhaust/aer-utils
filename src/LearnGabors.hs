@@ -32,6 +32,9 @@ import           Control.Monad.Fix
 import           Control.Monad.Zip
 import           Control.Monad hiding (forM_,mapM,mapM_)
 
+import           Control.DeepSeq (force)
+import           Control.Exception (evaluate)
+
 import           Control.Parallel.Strategies
 
 import           Codec.Picture
@@ -182,24 +185,29 @@ oneIteration imgs α β λ σ = do
     liftIO $ writePhisToPng ("output/phis-" ++ show iteration ++ ".png") (toList φs)
 
     -- extract subimages at random from this image to make data vector X
+    liftIO $ putStrLn $ " → chosing patches"
     patches <- B.replicateM 100 (randomPatch img)
-    liftIO $ do
-      writePhisToPng ("output/patches-" ++ show iteration ++ ".png") (toList patches)
-      putStrLn $ " → chose patches"
+    liftIO $ writePhisToPng ("output/patches-" ++ show iteration ++ ".png") (toList patches)
 
 
 
 
     -- calculate coefficients for these data via conjugate gradient routine
+    liftIO $ putStrLn $ " → calculating coefficients"
     let initAs    = initialAs patches φs -- [ initialAs patch φs | patch <- patches ]
-        fittedAs  = [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
+   
+    -- force evaluation here
+    fittedAs <- liftIO $ evaluate $ force 
+              $ withStrategy (parTraversable rdeepseq) 
+              $ [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
+
+    
 
     -- calculate residual error
+    liftIO $ putStrLn $ " → calculating residuals"
     let err = residualError patches fittedAs φs
 
-    liftIO $ do
-      writePhisToPng ("output/residual" ++ show iteration ++ ".png") (toList err)
-      putStrLn " → calculated residuals"
+    liftIO $ writePhisToPng ("output/residual" ++ show iteration ++ ".png") (toList err)
 
     -- update bases
     let deltaφs = updateBases err fittedAs
@@ -207,15 +215,15 @@ oneIteration imgs α β λ σ = do
 
     liftIO $ writePhisToPng ("output/deltaphis-"++ show iteration ++".png") (toList deltaφs)
 
+    liftIO $ putStrLn $ " → modifying φs"
     modify' (\is -> is {isPhis = [ φ + η * dφ | φ <- isPhis is | dφ <- deltaφs ]})
-    liftIO $ putStrLn $ " → modified φs"
 
 
 
     -- normalize bases
     -- (there is some state hidden here)
+    liftIO $ putStrLn $ " → adjusting φs"
     adjustPhisForVariance α fittedAs
-    liftIO $ putStrLn $ " → adjusted φs"
 
     {-nextφs <- isPhis <$> get-}
     {-liftIO $ writePhisToPng ("output/nextphis-"++ show iteration ++".png") (toList nextφs)-}
@@ -236,10 +244,12 @@ learnGabors = do
         σ = 0.316
 
     -- generate random φs
-    {-φs <- evalRandIO $ replicateM 64 randomPhi :: IO [Phi Double]-}
-    φs <- readCSVMats "data/mats/a.csv" :: IO (Phis Double)
+    putStrLn "generating random φs"
+    φs <- evalRandIO $ V.replicateM 64 randomPhi :: IO (Phis Double)
+    {-φs <- readCSVMats "data/mats/a.csv" :: IO (Phis Double)-}
 
     -- read in images
+    putStrLn "reading in images"
     let imageNames = [ "data/mats/images/img" ++ show n ++ ".csv" | n <- [0..9::Int] ]
     images <- B.fromList <$> mapM readCSVImage imageNames :: IO (B.Vector (Img 512 512 Double))
 

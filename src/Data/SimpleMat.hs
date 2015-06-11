@@ -16,6 +16,9 @@ import           GHC.Exts
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as U
 
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Csv as CSV
+
 import           Data.Proxy
 import           Data.List
 import           Data.List.Split
@@ -167,30 +170,39 @@ concatVer ms = Mat $ \x y -> let h = fromInteger $ natVal (Proxy :: Proxy h)
 
 --------------------------------------------------
 
-readCSVImage :: forall w h a. (KnownNat w, KnownNat h, U.Unbox a, Read a)
+readCSVImage :: forall w h a. (KnownNat w, KnownNat h, U.Unbox a, CSV.FromField a)
              => FilePath -> IO (Mat w h a)
 readCSVImage fp = do
-    f <- readFile fp
-    let w  = fromInteger $ natVal (Proxy :: Proxy w)
-        h  = fromInteger $ natVal (Proxy :: Proxy h)
-        ds = map read . filter (/= "") . splitWhen (\x -> elem x ("\n," :: String)) $ f
-    return . mkMatU $ ds
+    (Right csv) <- CSV.decode CSV.NoHeader <$> BL.readFile fp
+    let m = Mat $ \x y -> csv V.! y U.! x
+        w = width m
+        h = height m
+
+    unless (V.length csv == h)
+      $ errorWithStackTrace ("height " ++ show (V.length csv) ++ "doesn't match type " ++ show h)
+    unless (all (== w) (U.length <$> csv))
+      $ errorWithStackTrace ("at least one width doesn't match type " ++ show w)
+
+    return m
 
 writeCSVImage ::
   (Show a, KnownNat w, KnownNat h) => FilePath -> Mat w h a -> IO ()
 writeCSVImage fp m = writeFile fp $ unlines $ map (intercalate "," . map show . toList) $ rows m
 
 
-readHDRImg :: (KnownNat w, KnownNat h) => FilePath -> IO (Mat w h PixelF)
-readHDRImg fp = do
-    (Right (ImageRGBF rgbi)) <- readHDR fp
-    let i  = extractLumaPlane rgbi :: Image PixelF
-        iw = imageWidth i
-        ih = imageHeight i
-        m  = Mat $ \x y -> realToFrac $ pixelAt i x y
-        mw = width m
-        mh = height m
+{-readHDRImg :: (KnownNat w, KnownNat h) => FilePath -> IO (Mat w h PixelF)-}
+{-readHDRImg fp = do-}
+{-    (Right (ImageRGBF rgbi)) <- readHDR fp-}
+{-    let i  = extractLumaPlane rgbi :: Image PixelF-}
+{-        iw = imageWidth i-}
+{-        ih = imageHeight i-}
+{-        m  = Mat $ \x y -> realToFrac $ pixelAt i x y-}
+{-        mw = width m-}
+{-        mh = height m-}
 
-    when (mw /= iw || mh /= ih) $ errorWithStackTrace "image dimensions don't match"
+{-    when (mw /= iw || mh /= ih) $ errorWithStackTrace "image dimensions don't match"-}
 
-    return m
+{-    return m-}
+
+{-writeHDRImg fp m = writeHDR fp img-}
+{-    where img = generateImage (index m) (width m) (height m)-}
