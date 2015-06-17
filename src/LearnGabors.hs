@@ -189,7 +189,7 @@ oneIteration imgs α β λ σ = do
     liftIO $ writePhisToPng ("output/phis-" ++ show iteration ++ ".png") (toList φs)
 
     -- extract subimages at random from this image to make data vector X
-    liftIO $ putStrLn $ " → chosing patches"
+    liftIO $ putStrLn " → chosing patches"
     patches <- B.replicateM 100 (randomPatch img)
     liftIO $ writePhisToPng ("output/patches-" ++ show iteration ++ ".png") (toList patches)
 
@@ -197,7 +197,7 @@ oneIteration imgs α β λ σ = do
 
 
     -- calculate coefficients for these data via conjugate gradient routine
-    liftIO $ putStrLn $ " → calculating coefficients"
+    liftIO $ putStrLn " → calculating coefficients"
     let initAs    = initialAs patches φs -- [ initialAs patch φs | patch <- patches ]
    
     -- force evaluation here
@@ -208,7 +208,7 @@ oneIteration imgs α β λ σ = do
     
 
     -- calculate residual error
-    liftIO $ putStrLn $ " → calculating residuals"
+    liftIO $ putStrLn " → calculating residuals"
     let err = residualError patches fittedAs φs
 
     liftIO $ writePhisToPng ("output/residual" ++ show iteration ++ ".png") (toList err)
@@ -219,14 +219,14 @@ oneIteration imgs α β λ σ = do
 
     liftIO $ writePhisToPng ("output/deltaphis-"++ show iteration ++".png") (toList deltaφs)
 
-    liftIO $ putStrLn $ " → modifying φs"
+    liftIO $ putStrLn " → modifying φs"
     modify' (\is -> is {isPhis = [ φ + η * dφ | φ <- isPhis is | dφ <- deltaφs ]})
 
 
 
     -- normalize bases
     -- (there is some state hidden here)
-    liftIO $ putStrLn $ " → adjusting φs"
+    liftIO $ putStrLn " → adjusting φs"
     adjustPhisForVariance α fittedAs
 
     {-nextφs <- isPhis <$> get-}
