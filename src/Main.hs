@@ -17,6 +17,7 @@ import Codec.Picture
 import Codec.Picture.Types
 
 import           Control.Monad
+import           Control.Parallel.Strategies
 
 import qualified Data.Vector as B
 import qualified Data.Vector.Unboxed as U
@@ -33,7 +34,7 @@ main = do
 
     (Right es) <- DVS.readDVSData fn
 
-    let fronts = map promoteImage $ createTimeFronts (read ws) es :: [Image PixelRGB16]
+      let fronts = map promoteImage $ createTimeFronts (read ws) es `using` parListChunk 32 rdeepseq :: [Image PixelRGB16]
 
     zipWithM_ (\i f -> writePng ("output/fronts/front-" ++ show i ++ ".png") f) [0..] fronts
 
