@@ -52,6 +52,7 @@ executable learngabors
                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
+  extensions:          DataKinds
 
 executable motionflow
   build-depends:       base >= 4.8 && < 4.9,
