@@ -7,6 +7,7 @@
 module ForwardVector where
 
 import Numeric.AD.Internal.Forward.Double
+import Numeric.AD.Internal.On
 import Numeric.AD.Mode
 import Numeric.AD.Internal.Identity
 import Numeric.AD.Jacobian
@@ -25,6 +26,7 @@ derivingUnbox "ForwardVector"
     [t| ForwardDouble -> (Double, Double) |]
     [| \ (ForwardDouble a b) -> (a,b) |]
     [| \ (a, b) -> (ForwardDouble a b) |]
+
 
 
 diff :: (ForwardDouble -> Vector ForwardDouble) -> Double -> Vector Double

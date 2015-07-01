@@ -169,8 +169,8 @@ mkInitialIS φs = IS
     , isIteration = 1
     }
 
-oneIteration :: (MonadIO m, MonadRandom m, MonadState (IterationState Double) m)
-             => Imgs 512 512 Double -> Double -> Double -> Double -> Double -> m ()
+oneIteration :: (KnownNat w, KnownNat h, MonadIO m, MonadRandom m, MonadState (IterationState Double) m)
+             => Imgs w h Double -> Double -> Double -> Double -> Double -> m ()
 oneIteration imgs α β λ σ = do
 
     -- get iteration
@@ -199,13 +199,13 @@ oneIteration imgs α β λ σ = do
     -- calculate coefficients for these data via conjugate gradient routine
     liftIO $ putStrLn " → calculating coefficients"
     let initAs    = initialAs patches φs -- [ initialAs patch φs | patch <- patches ]
-   
+
     -- force evaluation here
     fittedAs <- liftIO $ evaluate $ force 
               $ withStrategy (parTraversable rdeepseq) 
               $ [ findAsForImg' λ β σ patch φs as  | patch <- patches | as <- initAs ]
 
-    
+
 
     -- calculate residual error
     liftIO $ putStrLn " → calculating residuals"
@@ -220,7 +220,7 @@ oneIteration imgs α β λ σ = do
     liftIO $ writePhisToPng ("output/deltaphis-"++ show iteration ++".png") (toList deltaφs)
 
     liftIO $ putStrLn " → modifying φs"
-    modify' (\is -> is {isPhis = [ φ + η * dφ | φ <- isPhis is | dφ <- deltaφs ]})
+    modify' (\is -> is {isPhis = [ manifestU (φ + η * dφ) | φ <- isPhis is | dφ <- deltaφs ]})
 
 
 
@@ -229,16 +229,18 @@ oneIteration imgs α β λ σ = do
     liftIO $ putStrLn " → adjusting φs"
     adjustPhisForVariance α fittedAs
 
-    {-nextφs <- isPhis <$> get-}
-    {-liftIO $ writePhisToPng ("output/nextphis-"++ show iteration ++".png") (toList nextφs)-}
 
-    {-liftIO $ putStrLn "--- pause ---"-}
-    {-s <- liftIO $ readLn-}
-    {-liftIO $ putStrLn s-}
+    -- write final phis to output file for debugging
+    i <- gets isIteration
+    finalφs <- gets isPhis
+    liftIO $ writePhisToPng ("output/iter-" ++ show i ++ ".png") (toList finalφs)
 
+    -- increase iteration counter
+    modify' (\s -> s { isIteration = i + 1 })
 
-learnGabors:: IO ()
-learnGabors = do
+{-learnGabors:: IO ()-}
+learnGabors :: (KnownNat w, KnownNat h) => Imgs w h Double -> IO ()
+learnGabors images = do
 
     -- magic numbers from olshausen code
     let α = 0.02
@@ -250,12 +252,11 @@ learnGabors = do
     -- generate random φs
     putStrLn "generating random φs"
     φs <- evalRandIO $ V.replicateM 64 randomPhi :: IO (Phis Double)
-    {-φs <- readCSVMats "data/mats/a.csv" :: IO (Phis Double)-}
 
-    -- read in images
-    putStrLn "reading in images"
-    let imageNames = [ "data/mats/images/img" ++ show n ++ ".csv" | n <- [0..9::Int] ]
-    images <- B.fromList <$> mapM readCSVImage imageNames :: IO (B.Vector (Img 512 512 Double))
+    {--- read in images-}
+    {-putStrLn "reading in images"-}
+    {-let imageNames = [ "data/mats/images/img" ++ show n ++ ".csv" | n <- [0..9::Int] ]-}
+    {-images <- B.fromList <$> mapM readCSVImage imageNames :: IO (B.Vector (Img 512 512 Double))-}
 
     -- initialize state
     let isState = mkInitialIS φs
@@ -263,39 +264,13 @@ learnGabors = do
     let phis = isPhis isState
     writePhisToPng "output/iter-0.png" (toList phis)
 
-    -- run iteration
+    -- run iterations
     gen <- getStdGen
-    _ <- evalRandT (execStateT (runLearnGabors images α β λ σ) isState) gen
+    _ <- evalRandT (execStateT (forever $ oneIteration images α β λ σ) isState) gen
 
 
-    {-evalRandIO (execStateT stuff isState)-}
+    putStrLn "never done"
 
-    putStrLn "done"
-
-runLearnGabors ::
-  (MonadIO m, MonadState (IterationState Double) m, MonadRandom m) =>
-  Imgs 512 512 Double -> Double -> Double -> Double -> Double -> m b
-runLearnGabors imgs α β λ σ = forever go
-    where go = do
-            i <- isIteration <$> get
-
-            oneIteration imgs α β λ σ
-            modify' $ \s -> s {isPhis = manifestU <$> isPhis s}
-
-
-            phis <- isPhis <$> get
-
-            let dir = "output/iter-" ++ show i ++ "/"
-            {-liftIO $ createDirectoryIfMissing True dir-}
-            {-forM_ (zip [0..] phis) $ \(i,φ) -> -}
-            {-    liftIO $ writeCSVImage (dir ++ "phi-" ++ show i ++ ".csv") φ-}
-
-            -- create image from mats 
-            {-liftIO $ print (minimum $ fmap minimum phis)-}
-            {-liftIO $ print (maximum $ fmap maximum phis)-}
-            liftIO $ writePhisToPng ("output/iter-" ++ show i ++ ".png") (toList phis)
-
-            modify' (\s -> s { isIteration = i + 1 })
 
 
 writePhisToPng fn phis = writePng fn img
@@ -340,30 +315,6 @@ randomPhi = mfix $ \m -> do
     v <- UV.replicateM (w*h) (getRandomR (-1,1))
     return $ Mat $ \x y -> v UV.! (x + y * w)
 
---createRandomPatchesFromImage :: FilePath -> IO () 
---createRandomPatchesFromImage imagePath = do
---    -- read in test image
---    putStrLn "reading image"
---    (Right (ImageY16 raw)) <- readPng imagePath
-
---    -- convert in matrix
---    let img :: Image Float
---        img = pixelMap ( (/(2^^(16::Int)-1)) . fromIntegral ) raw
---        mat = img2mat img
-
---    -- draw random submatrices
---    ms <- replicateM 512 (randomPatch 16 mat)
---    let ps = map mat2img ms :: [Image PixelF]
-
-
---    -- write out patches as images
---    forM_ (zip [0..] ps) $ \(i,p) -> do
---      let path = "/tmp/imgs/img" ++ show i ++ ".png"
---          img  = pixelMap (round . (*(2^(16::Int)))) p :: Image Pixel16
---      putStrLn $ "writing: " ++ path
---      putStrLn $ "maximum: " ++ show (V.maximum . imageData $ img)
---      putStrLn $ "minimum: " ++ show (V.minimum . imageData $ img)
---      writePng path img
 
 --------------------------------------------------
 

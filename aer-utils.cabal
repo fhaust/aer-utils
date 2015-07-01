@@ -37,8 +37,10 @@ executable learngabors
                        directory,
                        mtl,
                        cassava,
-                       deepseq
-                       -- simple-reflect,
+                       deepseq,
+                       repa,
+                       ghc-prim,
+                       simple-reflect
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields -fexcess-precision

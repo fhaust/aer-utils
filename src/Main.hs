@@ -27,6 +27,8 @@ import           Data.AER.DVS128 as DVS
 
 import           System.Environment
 
+import           GHC.TypeLits
+
 main = do
     args@[ws,fn] <- getArgs
 
@@ -34,7 +36,8 @@ main = do
 
     (Right es) <- DVS.readDVSData fn
 
-      let fronts = map promoteImage $ createTimeFronts (read ws) es `using` parListChunk 32 rdeepseq :: [Image PixelRGB16]
+    let frontsST = createTimeFronts (read ws) es :: [M.Mat 128 128 Float]
+        fronts   = withStrategy (parListChunk 32 rdeepseq) (map (promoteImage . timeFrontToImage) frontsST)
 
     zipWithM_ (\i f -> writePng ("output/fronts/front-" ++ show i ++ ".png") f) [0..] fronts
 
@@ -58,19 +61,19 @@ normalizeMat m = fmap (\a -> (a - low) / (high - low)) m
           high = maximum m
 
 
-createTimeFronts :: NominalDiffTime -> [DVS.Event DVS.Address] -> [Image Pixel16]
-createTimeFronts windowSize es = 
+createTimeFronts :: NominalDiffTime -> [DVS.Event DVS.Address] -> [M.Mat 128 128 Float]
+createTimeFronts windowSize es = ts
 
-    let ts :: [M.Mat 128 128 Float]
-        ts = map ( normalizeMat  -- normalize to window sizes
-                 . M.mkMatU . U.toList . U.map (realToFrac . (`mod'` windowSize) . fst) -- convert to matrix
-                 . timeFront           -- create timefronts
-                 )
-           . filter ((>50) . length) -- only use windows with at least some content
-           . extractWindows windowSize 
-           $ es 
+    where ts = map ( normalizeMat  -- normalize to window sizes
+                   . M.mkMatU . U.toList . U.map (realToFrac . (`mod'` windowSize) . fst) -- convert to matrix
+                   . timeFront           -- create timefronts
+                   )
+             . filter ((>50) . length) -- only use windows with at least some content
+             . extractWindows windowSize 
+             $ es 
 
-    -- create images
-        imgs = map (\m -> generateImage (\x y -> round . (*2^16) $ M.index m x y) (M.width m) (M.height m)) ts
 
-    in imgs
+
+timeFrontToImage :: (KnownNat w, KnownNat h, RealFrac a) => M.Mat w h a -> Image Pixel16
+timeFrontToImage ts = generateImage go (M.width ts) (M.height ts)
+    where go x y = round . (*2^16) $ M.index ts x y
