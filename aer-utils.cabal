@@ -29,6 +29,7 @@ executable learngabors
                        GA,
                        vector,
                        vector-th-unbox,
+                       vector-algorithms,
                        parallel,
                        JuicyPixels,
                        hmatrix,
@@ -40,7 +41,8 @@ executable learngabors
                        deepseq,
                        repa,
                        ghc-prim,
-                       simple-reflect
+                       simple-reflect,
+                       dtw
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields -fexcess-precision

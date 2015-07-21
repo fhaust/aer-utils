@@ -29,17 +29,22 @@ import           System.Environment
 
 import           GHC.TypeLits
 
+
+import           OlshausenOnStreams
+
 main = do
-    args@[ws,fn] <- getArgs
+    (es,patch,phi,cost,path) <- OlshausenOnStreams.test
+    print cost
+    {-args@[ws,fn] <- getArgs-}
 
-    unless (length args == 2) $ error "Usage: <prog> windowsize filename"
+    {-unless (length args == 2) $ error "Usage: <prog> windowsize filename"-}
 
-    (Right es) <- DVS.readDVSData fn
+    {-(Right es) <- DVS.readDVSData fn-}
 
-    let frontsST = createTimeFronts (read ws) es :: [M.Mat 128 128 Float]
-        fronts   = withStrategy (parListChunk 32 rdeepseq) (map (promoteImage . timeFrontToImage) frontsST)
+    {-let frontsST = createTimeFronts (read ws) es :: [M.Mat 128 128 Float]-}
+    {-    fronts   = map (promoteImage . timeFrontToImage) frontsST :: [Image PixelRGB16]-}
 
-    zipWithM_ (\i f -> writePng ("output/fronts/front-" ++ show i ++ ".png") f) [0..] fronts
+    {-zipWithM_ (\i f -> writePng ("output/fronts/front-" ++ show i ++ ".png") f) [0..] fronts-}
 
 convertImage from to = do
     f <- readFile from
