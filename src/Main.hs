@@ -16,7 +16,10 @@ import           Data.Thyme.Clock
 import Codec.Picture
 import Codec.Picture.Types
 
+
 import           Control.Monad
+import           Control.Exception
+import           Control.DeepSeq
 import           Control.Parallel.Strategies
 
 import qualified Data.Vector as B
@@ -33,8 +36,10 @@ import           GHC.TypeLits
 import           OlshausenOnStreams
 
 main = do
-    (es,patch,phi,cost,path) <- OlshausenOnStreams.test
-    print cost
+    {-(patches,fittedAs,reconstructedPhis,residualError) <- OlshausenOnStreams.test-}
+
+    {-print fittedAs-}
+
     {-args@[ws,fn] <- getArgs-}
 
     {-unless (length args == 2) $ error "Usage: <prog> windowsize filename"-}
@@ -45,6 +50,8 @@ main = do
     {-    fronts   = map (promoteImage . timeFrontToImage) frontsST :: [Image PixelRGB16]-}
 
     {-zipWithM_ (\i f -> writePng ("output/fronts/front-" ++ show i ++ ".png") f) [0..] fronts-}
+
+    putStrLn "done"
 
 convertImage from to = do
     f <- readFile from

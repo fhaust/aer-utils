@@ -15,11 +15,16 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
+source-repository master
+  type:                git
+  location:            https://github.com/fhaust/aer-utils.git
 
+-- default-extensions:  DataKinds
 
 executable learngabors
   build-depends:       base >= 4.8 && < 4.9,
                        aer,
+                       linear,
                        vector-space,
                        thyme,
                        containers,
@@ -42,7 +47,9 @@ executable learngabors
                        repa,
                        ghc-prim,
                        simple-reflect,
-                       dtw
+                       dtw,
+                       data-ordlist,
+                       gnuplot
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields -fexcess-precision
@@ -53,36 +60,35 @@ executable learngabors
                        -rtsopts 
                        -- -eventlog
                        -fprof-auto -auto-all -caf-all
-                       --"-with-rtsopts=-N -p -s -h -i0.1 -T"
+                       -- "-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
-  extensions:          DataKinds
 
-executable motionflow
-  build-depends:       base >= 4.8 && < 4.9,
-                       aer,
-                       vector-space,
-                       thyme,
-                       containers,
-                       split,
-                       vector,
-                       parallel,
-                       hmatrix,
-                       kmeans-vector,
-                       MonadRandom,
-                       RANSAC,
-                       linear,
-                       lens
-  main-is:             Data/AER/MotionFlow.hs
-  ghc-options:         -Wall -funbox-strict-fields -fexcess-precision
-                       -- -fllvm -optlo-O3
-                       -threaded 
-                       -rtsopts 
-                       -- -eventlog
-                       -fprof-auto
-                       --"-with-rtsopts=-N -p -s -h -i0.1 -T"
-  hs-source-dirs:      src
-  default-language:    Haskell2010
+--executable motionflow
+--  build-depends:       base >= 4.8 && < 4.9,
+--                       aer,
+--                       vector-space,
+--                       thyme,
+--                       containers,
+--                       split,
+--                       vector,
+--                       parallel,
+--                       hmatrix,
+--                       kmeans-vector,
+--                       MonadRandom,
+--                       RANSAC,
+--                       linear,
+--                       lens
+--  main-is:             Data/AER/MotionFlow.hs
+--  ghc-options:         -Wall -funbox-strict-fields -fexcess-precision
+--                       -- -fllvm -optlo-O3
+--                       -threaded 
+--                       -rtsopts 
+--                       -- -eventlog
+--                       -fprof-auto
+--                       --"-with-rtsopts=-N -p -s -h -i0.1 -T"
+--  hs-source-dirs:      src
+--  default-language:    Haskell2010
 
 test-suite maintest
   type:                exitcode-stdio-1.0
