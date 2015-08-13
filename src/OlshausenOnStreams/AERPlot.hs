@@ -53,7 +53,7 @@ multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap event
 
 defltOpts :: (Atom.C x, Atom.C y, Atom.C z)
           => Opts.T (Graph3D.T x y z)
-defltOpts = Opts.key False 
+defltOpts = Opts.key True
           . Opts.xLabel "x pos" 
           . Opts.yLabel "y pos" 
           . Opts.zLabel "time (s)" 

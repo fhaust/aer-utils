@@ -25,6 +25,16 @@ instance Fractional a => Fractional (Event a) where
     a / b   = Event (time a / time b) (posX a / posX b) (posY a / posY b) (val a / val b)
     fromRational a = Event (fromRational a) (fromRational a) (fromRational a) (fromRational a)
 
+instance Floating a => Floating (Event a) where
+    sqrt (Event t x y p) = Event (sqrt t) (sqrt x) (sqrt y) (sqrt p)
+
+scaleEvent :: Num a => a -> Event a -> Event a
+scaleEvent f e = Event 
+  { time = f * time e
+  , posX = f * posX e
+  , posY = f * posY e
+  , val  = f * val  e
+  }
 
 {-U.derivingUnbox "Event"-}
 {-    [t| Event -> (NominalDiffTime, Float, Float, Float) |]-}

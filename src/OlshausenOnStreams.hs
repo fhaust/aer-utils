@@ -27,6 +27,7 @@ import qualified Data.Vector.Generic as G
 import           Data.Function
 import           Data.List
 import           Data.Word7
+import           Data.Bifunctor
 
 import           Data.DTW
 
@@ -88,6 +89,23 @@ extractRandomSTC st sx sy es = do
 
     return $ extractSTC rt st rx sx ry sy es
 
+scaleSTC :: (Monad m, Num a) => a -> a -> a -> a -> m (Event a) -> m (Event a)
+scaleSTC ft fx fy fp stc = [ Event (ft * t) (fx * x) (fy * y) (fp * p) | (Event t x y p) <- stc ]
+
+
+-- | TODO fix value NaNs ... hacked for now
+normalizeSTC es = fmap (\e -> e {val = 1}) [ (e - m) / s | e <- es ]
+  where m = mean es
+        s = stdDev es
+
+{-onNormalizedSTC :: (Floating a, Monad t, Foldable t) => t a -> (t a -> (b,t a)) -> (b,t a)-}
+onNormalizedSTC stc f = unnormalize . f . normalize $ stc
+  where normalize es = [ (e - m) / s | e <- es ]
+        unnormalize es = [ (e * s) + m | e <- es ]
+        m = mean stc
+        s = stdDev stc
+
+
 reconstructEvents :: (Ord a, Num a) => [a] -> [Events a] -> Events a
 reconstructEvents as φs = mergeEvents $ scaleP as φs
     where scaleP = zipWith (\a φ -> V.map (\e -> e { val = a * val e }) φ)
@@ -114,6 +132,12 @@ eventDistance a b = sqrt (positionDistance + timeDistance + valDistance)
 
 
 
+mean :: (Fractional a, Foldable t) => t a -> a
+mean xs = sum xs / (fromIntegral $ length xs)
+
+stdDev :: (Floating a, Monad t, Foldable t) => t a -> a
+stdDev xs = sqrt ((1 / (fromIntegral $ length xs)) * sum [ (x - m)^^2 | x <- xs ])
+  where m = mean xs
 
 -- | super mega generic type 0o
 eventDTW :: forall c (v :: * -> *) a.
@@ -184,12 +208,27 @@ fitAs patches φs = do
 -- closer to the patch
 getPushDirections ::
   (Floating t1, Ord t1) =>
-  V.Vector (Event t1) -> V.Vector (Event t1) -> [Event t1]
-getPushDirections φ patch = dirs
+  V.Vector (Event t1) -> V.Vector (Event t1) -> V.Vector (Event t1)
+getPushDirections φ patch = V.fromList dirs
   where gs   = groupBy ((==) `on` fst) . reverse $ dtwPath
         gs'  = [ (fst . head $ g, map snd g) | g <- gs ]
         dirs = [ sum [ ((patch V.! y) - (φ V.! x) ) / genericLength ys | y <- ys] | (x,ys) <- gs' ]
         (Result _ dtwPath) = eventDTW φ patch
+
+
+updatePhi :: (Floating a, Ord a) => a -> Events a -> Events a -> Events a
+updatePhi η φ patch = V.zipWith (+) φ (V.map (scaleEvent (η*c)) pds)
+  where pds = getPushDirections φ patch
+        c   = min 1 (1 / (cost $ eventDTW φ patch))
+
+
+
+oneIteration :: (Floating a, Ord a) => [Events a] -> [Events a] -> [Events a]
+oneIteration patches φs = fmap (\φ -> foldl' normUpdate φ patches) φs
+  where η           = 1 / (fromIntegral . length $ patches)
+        normPatches = map normalizeSTC patches
+        normUpdate φ patch = onNormalizedSTC φ (\φ -> updatePhi η φ (normalizeSTC patch))
+
 
 
 
