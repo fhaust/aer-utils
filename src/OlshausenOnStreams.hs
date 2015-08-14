@@ -18,11 +18,13 @@ import qualified Data.AER.DVS128 as DVS
 import           Control.Monad.Random
 import           Control.Monad
 import           Control.Parallel.Strategies
+import           Control.Lens
 
 import           Data.Thyme.Clock
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as V
 import qualified Data.Vector.Generic as G
+import qualified Data.Vector.Unboxed as U
 
 import           Data.Function
 import           Data.List
@@ -33,28 +35,37 @@ import           Data.DTW
 
 import           Data.List.Ordered
 
-import           Numeric.AD
+import qualified Numeric.AD as AD
+
+import           Linear
 
 
 import           OlshausenOnStreams.ArtificialData
-import           OlshausenOnStreams.Types
 import qualified OlshausenOnStreams.AERPlot as Plot
 
 
+type Event a  = V4 a
+type Events a = V.Vector (Event a)
+type Patch a  = Events a
+type Phi a    = Events a
+
+time, posX, posY, pol :: Lens' (Event a) a
+time = _x
+posX = _y
+posY = _z
+pol  = _w
+
 fromDVSEvent :: Fractional a => DVS.Event DVS.Address -> Event a
-fromDVSEvent (DVS.Event (DVS.Address p x y) t) = Event { time = toSeconds t
-                                                       , posX = fromIntegral x
-                                                       , posY = fromIntegral y
-                                                       , val  = if p == DVS.U then 1 else -1
-                                                       }
+fromDVSEvent (DVS.Event (DVS.Address p x y) t) = 
+    V4 (toSeconds t) (fromIntegral x) (fromIntegral y) (if p == DVS.U then 1 else -1)
 
 createRandomEvent :: (Num a, Random a, MonadRandom m) => m (Event a)
-createRandomEvent = Event <$> getRandomR (0,1) <*> getRandomR (0,127) <*> getRandomR (0,127) <*> getRandomR (0,1)
+createRandomEvent = V4 <$> getRandomR (0,1) <*> getRandomR (0,127) <*> getRandomR (0,127) <*> getRandomR (0,1)
 
 
 -- | create random eventstream of length n
-createRandomEvents :: (Ord a, Num a, Random a, MonadRandom m) => Int -> m (Events a)
-createRandomEvents n = sortEvents <$> V.replicateM n createRandomEvent
+createRandomEvents :: (U.Unbox a, Ord a, Num a, Random a, MonadRandom m) => Int -> m (Events a)
+createRandomEvents n = sortEvents <$> G.replicateM n createRandomEvent
 
 
 
@@ -89,12 +100,12 @@ extractRandomSTC st sx sy es = do
 
     return $ extractSTC rt st rx sx ry sy es
 
-scaleSTC :: (Monad m, Num a) => a -> a -> a -> a -> m (Event a) -> m (Event a)
-scaleSTC ft fx fy fp stc = [ Event (ft * t) (fx * x) (fy * y) (fp * p) | (Event t x y p) <- stc ]
+{-scaleSTC :: (Monad m, Num a) => a -> a -> a -> a -> m (Event a) -> m (Event a)-}
+{-scaleSTC ft fx fy fp stc = [ Event (ft * t) (fx * x) (fy * y) (fp * p) | (Event t x y p) <- stc ]-}
 
 
 -- | TODO fix value NaNs ... hacked for now
-normalizeSTC es = fmap (\e -> e {val = 1}) [ (e - m) / s | e <- es ]
+normalizeSTC es = fmap (set pol 1) [ (e - m) / s | e <- es ]
   where m = mean es
         s = stdDev es
 
@@ -107,28 +118,28 @@ onNormalizedSTC stc f = unnormalize . f . normalize $ stc
 
 
 reconstructEvents :: (Ord a, Num a) => [a] -> [Events a] -> Events a
-reconstructEvents as φs = mergeEvents $ scaleP as φs
-    where scaleP = zipWith (\a φ -> V.map (\e -> e { val = a * val e }) φ)
+{-reconstructEvents as φs = mergeEvents $ V.zipWith (\a φ -> V.map (a *^) φ) as φs-}
+reconstructEvents as φs = mergeEvents $ [ [ a *^ e | e <- φ ] | a <- as | φ <- φs ]
 
 
 -- | sort events based on timestamp
-sortEvents :: Ord a => Events a -> Events a
-sortEvents = V.modify (V.sortBy (compare `on` time))
+sortEvents :: (Ord a) => Events a -> Events a
+sortEvents = G.modify (V.sortBy (compare `on` (^. time)))
 
 {-concatEvents :: Ord a => [Events a] -> Events a-}
 {-concatEvents es = sortEvents $ V.concat es-}
 
 -- | merge multiple sorted event streams
-mergeEvents :: Ord a => G.Vector v (Event a) => [v (Event a)] -> v (Event a)
-mergeEvents = G.fromList . mergeAllBy (compare `on` time) . map G.toList . sortHeads
-    where sortHeads = sortBy (compare `on` (time . G.head))
+mergeEvents :: Ord a => [Events a] -> Events a
+mergeEvents = G.fromList . mergeAllBy (compare `on` (view time)) . map G.toList . sortHeads
+    where sortHeads = sortBy (compare `on` (view time . G.head))
 
 -- | this is basically euclidian distance in space-time
 eventDistance :: Floating a => Event a -> Event a -> a
 eventDistance a b = sqrt (positionDistance + timeDistance + valDistance)
-  where positionDistance = (posX a - posX b)**2 + (posY a - posY b)**2
-        timeDistance     = (time a - time b)**2
-        valDistance      = (val  a - val  b)**2
+  where positionDistance = (a ^. posX - b ^. posX)**2 + (a ^. posY - b ^. posY)**2
+        timeDistance     = (a ^. time - b ^. time)**2
+        valDistance      = (a ^. pol  - b ^. pol )**2
 
 
 
@@ -140,21 +151,15 @@ stdDev xs = sqrt ((1 / (fromIntegral $ length xs)) * sum [ (x - m)^^2 | x <- xs 
   where m = mean xs
 
 -- | super mega generic type 0o
-eventDTW :: forall c (v :: * -> *) a.
-            (Floating c, Ord c, G.Vector v a, G.Vector v Int, DataSet (v a), Item (v a) ~ Event c) =>
-            v a -> v a -> Result c
+{-eventDTW :: (Floating a, Ord a, G.Vector v e, e ~ Event a, Item (v e) ~ Event a, DataSet (v e)) -}
+{-         => v e -> v e -> Result a-}
+eventDTW :: (Ord a, Floating a) => Events a -> Events a -> Result a
 eventDTW = fastDtw eventDistance reduceEventStream 1
 
 -- | cut the eventstream in half by skipping every second event
-reduceEventStream :: (G.Vector v a, G.Vector v Int) => v a -> v a
+reduceEventStream :: Events a -> Events a
 reduceEventStream v = G.backpermute v (G.fromList [0,2..G.length v - 1])
 
-normalizeEventTimes ::
-  (Fractional a, Ord a) => V.Vector (Event a) -> V.Vector (Event a)
-normalizeEventTimes es = V.map fixT es
-    where minT  = V.minimum . V.map time $ es
-          maxT  = V.maximum . V.map time $ es
-          fixT e = e { time = (time e - minT) / (maxT - minT) }
 
 sparseness :: Floating a => a -> a -> a
 sparseness σ a = s (a / σ) where s x = log (1+x*x)
@@ -162,8 +167,8 @@ sparseness σ a = s (a / σ) where s x = log (1+x*x)
 logit x = log (1+x*x)
 
 -- | TODO give parameters as ... parameters
-errorFunction ::
-  (Floating a, Ord a) => Events a -> [Events a] -> [a] -> a
+errorFunction :: (Floating a, Ord a)
+  => Events a -> [Events a] -> [a] -> a
 errorFunction patch φs as = λ   * cost (eventDTW patch (reconstructEvents as φs))
                           + bos * sum [ sparseness σ a | a <- as ]
     where bos = 6.96
@@ -172,10 +177,10 @@ errorFunction patch φs as = λ   * cost (eventDTW patch (reconstructEvents as �
 
 
 doTheTimeWarp :: forall a. (Ord a, Num a, Floating a)
-              => Events a -> [Events a] -> [a] -> [[a]]
-doTheTimeWarp patch φs = gradientDescent go
-  where go :: forall t. (Scalar t ~ a, Mode t, Floating t, Ord t) => [t] -> t
-        go = errorFunction (fmap auto <$> patch) (fmap (fmap auto) <$> φs)
+              => V.Vector (Event a) -> [V.Vector (Event a)] -> [a] -> [[a]]
+doTheTimeWarp patch φs = AD.gradientDescent go
+  where go :: forall t. (AD.Scalar t ~ a, AD.Mode t, Floating t, Ord t) => [t] -> t
+        go = errorFunction (fmap AD.auto <$> patch) (fmap (fmap AD.auto) <$> φs)
 
 doTheTimeWarpAgain :: (Floating a, Ord a) 
                    => Events a -> [Events a] -> [a] -> [a]
@@ -217,7 +222,7 @@ getPushDirections φ patch = V.fromList dirs
 
 
 updatePhi :: (Floating a, Ord a) => a -> Events a -> Events a -> Events a
-updatePhi η φ patch = V.zipWith (+) φ (V.map (scaleEvent (η*c)) pds)
+updatePhi η φ patch = V.zipWith (+) φ (V.map ((η*c) *^) pds)
   where pds = getPushDirections φ patch
         c   = min 1 (1 / (cost $ eventDTW φ patch))
 
@@ -232,13 +237,6 @@ oneIteration patches φs = fmap (\φ -> foldl' normUpdate φ patches) φs
 
 
 
--- | draw 'n' sequential events from 'es', convert them to the internal
--- 'Event' type and normalize the timestamps
-drawPatch ::
-  (Fractional a, Ord a, G.Vector v (DVS.Event DVS.Address),
-   MonadRandom f) =>
-  Int -> v (DVS.Event DVS.Address) -> f (V.Vector (Event a))
-drawPatch n es = normalizeEventTimes . V.map fromDVSEvent . V.convert <$> pickRandomEvents n es 
 
 {-test = do-}
 {-    let patchSize = 64-}
