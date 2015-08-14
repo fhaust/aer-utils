@@ -7,3 +7,5 @@ cabal.sandbox.config
 *.ps
 checkpoints
 *.eventlog
+output
+data

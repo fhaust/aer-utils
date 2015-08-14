@@ -202,7 +202,7 @@ fitAs patches φs = do
     ass <- replicateM numPatches (replicateM numPhis getRandom)
 
     -- fit as to patches
-    let fittedAs = [ doTheTimeWarpAgain patch φs as | patch <- patches | as <- ass ] 
+    let fittedAs = [ doTheTimeWarpAgain patch φs as | patch <- patches | as <- ass ]
 
     -- return results with parallel strategy
     return (withStrategy (parList rdeepseq) fittedAs)
