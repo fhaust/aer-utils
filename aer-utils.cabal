@@ -50,7 +50,8 @@ executable learngabors
                        dtw,
                        data-ordlist,
                        gnuplot,
-                       lens
+                       lens,
+                       binary
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields -fexcess-precision

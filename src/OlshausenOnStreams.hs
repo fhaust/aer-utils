@@ -31,6 +31,7 @@ import           Data.List
 import           Data.Word7
 import           Data.Bifunctor
 import           Data.Foldable
+import           Data.Binary
 
 import           Data.DTW
 
@@ -272,7 +273,7 @@ oneIteration' patches φs = do
     {-let normalizedφs = zipWith3 (\φs m v -> fmap (\φ -> (φ - m) / v) φs) φs means variances-}
     let normalizedφs = map normalizeSTC φs
 
-    traceM $ "normalizedφs: " ++ show normalizedφs
+    {-traceM $ "normalizedφs: " ++ show normalizedφs-}
 
     scaledDirections <- forM normalizedPatches $ \patch ->  do
 
@@ -282,7 +283,7 @@ oneIteration' patches φs = do
       -- scale phis with the given as
       let fittedφs = withStrategy (parList rdeepseq) $ zipWith (\a φ -> (a*) <$> φ) fittedAs normalizedφs
 
-      traceM $ "fittedφs: " ++ show fittedφs
+      {-traceM $ "fittedφs: " ++ show fittedφs-}
 
       -- at this point the phis are normalized and scaled according to
       -- the 'best' as, that is they match the normalized patches as
@@ -290,7 +291,7 @@ oneIteration' patches φs = do
 
       let pushDirections = map (\φ -> getPushDirections φ patch) fittedφs
 
-      traceM $ "pushDirections: " ++ show pushDirections
+      {-traceM $ "pushDirections: " ++ show pushDirections-}
 
       -- push directions are scaled with several factors:
       --  1: 'cost' as determinated by the Kai factor
@@ -309,13 +310,13 @@ oneIteration' patches φs = do
     -- push directions are summed up over all patches 
     -- and applied to the normalized φs
     let finalDirections = foldl1' (zipWith (V.zipWith (+))) scaledDirections
-      
-    traceM $ "finalDirections: " ++ show scaledDirections
+
+    {-traceM $ "finalDirections: " ++ show scaledDirections-}
 
     -- apply updates
     let updatedφs = zipWith (V.zipWith (+)) normalizedφs finalDirections
 
-    traceM $ "updatedφs: " ++ show updatedφs
+    {-traceM $ "updatedφs: " ++ show updatedφs-}
 
     -- normalize φs again -> done
     return $ map normalizeSTC updatedφs
@@ -341,11 +342,14 @@ iterateNM n f x = do
     return $ x' : xs'
 
 
-test numPhis sizePhis = do
+test numPhis sizePhis iterations = do
 
     phis <- replicateM numPhis $ createRandomEvents sizePhis  :: IO [Events Float]
     let stc = V.fromList $ map fromDVSEvent $ extractSTC 5.5 7.2 55 72 55 72 $ movingEdge DVS.U 0.1
 
 
-    iterateNM 1000 (oneIteration' [stc]) phis
+    phis' <- iterateNM iterations (oneIteration' [stc]) phis
+
+
+    encodeFile "manyphis.bin" (toList <$$> phis')
 
