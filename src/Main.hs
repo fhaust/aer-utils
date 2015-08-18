@@ -36,6 +36,7 @@ import           GHC.TypeLits
 import           OlshausenOnStreams
 
 main = do
+    OlshausenOnStreams.test
     {-(patches,fittedAs,reconstructedPhis,residualError) <- OlshausenOnStreams.test-}
 
     {-print fittedAs-}

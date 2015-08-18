@@ -342,13 +342,20 @@ iterateNM n f x = do
     return $ x' : xs'
 
 
-test numPhis sizePhis iterations = do
+test = do
+
+    let numPhis = 16
+        sizePhis = 32
+        iterations = 500
+
+    stcs <- replicateM 2 (V.fromList <$> randomPlane 128) :: IO [Events Float]
+    encodeFile "stcs.bin" (toList <$> stcs)
 
     phis <- replicateM numPhis $ createRandomEvents sizePhis  :: IO [Events Float]
-    let stc = V.fromList $ map fromDVSEvent $ extractSTC 5.5 7.2 55 72 55 72 $ movingEdge DVS.U 0.1
+    {-let stc = V.fromList $ map fromDVSEvent $ extractSTC 5.5 7.2 55 72 55 72 $ movingEdge DVS.U 0.1-}
 
 
-    phis' <- iterateNM iterations (oneIteration' [stc]) phis
+    phis' <- iterateNM iterations (oneIteration' stcs) phis
 
 
     encodeFile "manyphis.bin" (toList <$$> phis')

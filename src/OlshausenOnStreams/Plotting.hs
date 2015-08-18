@@ -14,6 +14,7 @@ import qualified Graphics.Gnuplot.Graph.ThreeDimensional as Graph3D
 import qualified Graphics.Gnuplot.Frame.OptionSet as Opts
 import qualified Graphics.Gnuplot.Value.Atom as Atom
 import qualified Graphics.Gnuplot.Terminal.SVG as SVG
+import qualified Graphics.Gnuplot.Terminal.PNG as PNG
 
 import Graphics.Gnuplot.Plot.TwoDimensional (linearScale, )
 
@@ -50,7 +51,7 @@ multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap event
 
 plotFile fn es = GP.plot terminal gfx
   where terminal = SVG.cons fn
-        gfx      = Frame.cons defltOpts (eventsToPlot es)
+        gfx      = Frame.cons (Opts.size 1920 1080 $ defltOpts) (eventsToPlot es)
 
 multiPlotFile fn es = GP.plot terminal gfx
   where terminal = SVG.cons fn
