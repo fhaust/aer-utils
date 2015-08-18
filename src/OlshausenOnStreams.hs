@@ -337,12 +337,15 @@ instance Random a => Random (V4 a) where
 iterateNM :: Monad m => Int -> (a -> m a) -> a -> m [a]
 iterateNM 0 _ _ = return []
 iterateNM n f x = do
+    traceM $ "iterations to go: " ++ show n
     x' <- f x 
     xs' <- iterateNM (n-1) f x'
     return $ x' : xs'
 
 
 test = do
+
+    traceM "running"
 
     let numPhis = 16
         sizePhis = 32
