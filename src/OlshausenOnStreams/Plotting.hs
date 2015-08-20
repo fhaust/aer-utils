@@ -50,17 +50,17 @@ plotEvents es = GP.plotDefault $  Frame.cons defltOpts (eventsToPlot es)
 multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
 
 plotFile fn es = GP.plot terminal gfx
-  where terminal = SVG.cons fn
-        gfx      = Frame.cons (Opts.size 1920 1080 $ defltOpts) (eventsToPlot es)
+  where terminal = PNG.cons fn
+        gfx      = Frame.cons (defltOpts) (eventsToPlot es)
 
 multiPlotFile fn es = GP.plot terminal gfx
-  where terminal = SVG.cons fn
+  where terminal = PNG.cons fn
         gfx      = Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
 
 
 defltOpts :: (Atom.C x, Atom.C y, Atom.C z)
           => Opts.T (Graph3D.T x y z)
-defltOpts = Opts.key True
+defltOpts = Opts.key False
           . Opts.xLabel "x pos" 
           . Opts.yLabel "y pos" 
           . Opts.zLabel "time (s)" 

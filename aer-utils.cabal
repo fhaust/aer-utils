@@ -37,7 +37,7 @@ executable learngabors
                        vector-algorithms,
                        parallel,
                        JuicyPixels,
-                       hmatrix,
+                       --hmatrix,
                        bytestring,
                        ad,
                        directory,
@@ -54,15 +54,15 @@ executable learngabors
                        binary
   main-is:             Main.hs
   ghc-options:         -Wall 
-                       -funbox-strict-fields -fexcess-precision
+                       ---funbox-strict-fields -fexcess-precision
                        -fllvm 
-                       -optlo-O3 -optlc-O3 -optlo-mem2reg
-                       -O3
-                       -threaded 
-                       -rtsopts 
+                       ---optlo-O3 -optlc-O3 -optlo-mem2reg
+                       -O
+                       ---threaded 
+                       -- -rtsopts 
                        -- -eventlog
-                       -fprof-auto -auto-all -caf-all
-                       -- "-with-rtsopts=-N -p -s -h -i0.1 -T"
+                       ---fprof-auto -auto-all -caf-all
+                        --"-with-rtsopts=-N -p -s -h -i0.1 -T"
   hs-source-dirs:      src
   default-language:    Haskell2010
 

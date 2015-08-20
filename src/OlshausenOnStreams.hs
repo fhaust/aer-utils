@@ -21,6 +21,7 @@ import           Control.Parallel.Strategies
 import           Control.Lens
 
 import           Data.Thyme.Clock
+import           Data.Thyme.Time
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as V
 import qualified Data.Vector.Generic as G
@@ -32,6 +33,7 @@ import           Data.Word7
 import           Data.Bifunctor
 import           Data.Foldable
 import           Data.Binary
+import           Data.AffineSpace
 
 import           Data.DTW
 
@@ -123,8 +125,8 @@ onNormalizedSTC stc f = unnormalize . f . normalize $ stc
         s = stdDev stc
 
 reconstructEvents :: (Ord a, Num a) => [Event a] -> [Events a] -> Events a
-{-reconstructEvents as φs = mergeEvents $ V.zipWith (\a φ -> V.map (a *^) φ) as φs-}
-reconstructEvents as φs = mergeEvents $ [ [ a * e | e <- φ ] | a <- as | φ <- φs ]
+reconstructEvents as φs = mergeEvents $ zipWith (\a φ -> V.map (\e -> a * e) φ) as φs
+{-reconstructEvents as φs = mergeEvents $ [ [ a * e | e <- φ ] | a <- as | φ <- φs ]-}
 
 
 -- | sort events based on timestamp
@@ -139,12 +141,12 @@ mergeEvents :: Ord a => [Events a] -> Events a
 mergeEvents = G.fromList . mergeAllBy (compare `on` (view time)) . map G.toList . sortHeads
     where sortHeads = sortBy (compare `on` (view time . G.head))
 
--- | this is basically euclidian distance in space-time
-eventDistance :: Floating a => Event a -> Event a -> a
-eventDistance a b = sqrt (positionDistance + timeDistance + valDistance)
-  where positionDistance = (a ^. posX - b ^. posX)**2 + (a ^. posY - b ^. posY)**2
-        timeDistance     = (a ^. time - b ^. time)**2
-        valDistance      = (a ^. pol  - b ^. pol )**2
+{--- | this is basically euclidian distance in space-time-}
+{-eventDistance :: Floating a => Event a -> Event a -> a-}
+{-eventDistance a b = sqrt (positionDistance + timeDistance + valDistance)-}
+{-  where positionDistance = (a ^. posX - b ^. posX)**2 + (a ^. posY - b ^. posY)**2-}
+{-        timeDistance     = (a ^. time - b ^. time)**2-}
+{-        valDistance      = (a ^. pol  - b ^. pol )**2-}
 
 
 
@@ -159,7 +161,7 @@ stdDev xs = sqrt ((1 / (fromIntegral $ length xs)) * sum [ (x - m)^^2 | x <- xs 
 {-eventDTW :: (Floating a, Ord a, G.Vector v e, e ~ Event a, Item (v e) ~ Event a, DataSet (v e)) -}
 {-         => v e -> v e -> Result a-}
 eventDTW :: (Ord a, Floating a) => Events a -> Events a -> Result a
-eventDTW = fastDtw eventDistance reduceEventStream 1
+eventDTW = fastDtw qd reduceEventStream 1
 
 -- | cut the eventstream in half by skipping every second event
 reduceEventStream :: Events a -> Events a
@@ -334,11 +336,14 @@ instance Random a => Random (V4 a) where
     random = runRand (V4 <$> getRandom <*> getRandom <*> getRandom <*> getRandom)
 
 
-iterateNM :: Monad m => Int -> (a -> m a) -> a -> m [a]
+iterateNM :: Int -> (a -> IO a) -> a -> IO [a]
 iterateNM 0 _ _ = return []
 iterateNM n f x = do
     traceM $ "iterations to go: " ++ show n
+    tStart <- getCurrentTime
     x' <- f x 
+    tEnd <- getCurrentTime
+    traceM $ "iteration took " ++ show (toMicroseconds (tEnd .-. tStart)) ++ "µs"
     xs' <- iterateNM (n-1) f x'
     return $ x' : xs'
 
@@ -347,11 +352,11 @@ test = do
 
     traceM "running"
 
-    let numPhis = 16
-        sizePhis = 32
+    let numPhis = 2
+        sizePhis = 16
         iterations = 500
 
-    stcs <- replicateM 2 (V.fromList <$> randomPlane 128) :: IO [Events Float]
+    stcs <- replicateM 2 (sortEvents . V.fromList <$> randomPlane 128) :: IO [Events Float]
     encodeFile "stcs.bin" (toList <$> stcs)
 
     phis <- replicateM numPhis $ createRandomEvents sizePhis  :: IO [Events Float]
