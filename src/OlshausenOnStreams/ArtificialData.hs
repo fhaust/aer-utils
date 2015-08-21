@@ -30,13 +30,18 @@ randomPlane num = do
     t <- getRandomR (0, 1)
     let o = V3 0 0 0
         n = normalize $ V3 x y t
-        u = normalize $ perpendicular n
+
+    plane o n num
+
+plane o n num = do
+    let u = normalize $ perpendicular n
         v = cross n u
 
     traceM $ "o = " ++ show o
     traceM $ "n = " ++ show n
     traceM $ "u = " ++ show u
     traceM $ "v = " ++ show v
+
 
     ps <- replicateM num $ do
       fu <- getRandom
@@ -45,7 +50,7 @@ randomPlane num = do
 
     return $ map (\(V3 a b c) -> (V4 a b c 1)) ps
 
-planePoint o n = do
+drawPlanePoint o n = do
     let u = normalize $ perpendicular n
         v = cross n u
 

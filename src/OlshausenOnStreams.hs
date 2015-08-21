@@ -283,7 +283,7 @@ oneIteration' patches φs = do
       fittedAs <- fitSingleAs patch normalizedφs
 
       -- scale phis with the given as
-      let fittedφs = withStrategy (parList rdeepseq) $ zipWith (\a φ -> (a*) <$> φ) fittedAs normalizedφs
+      let fittedφs = zipWith (\a φ -> (a*) <$> φ) fittedAs normalizedφs
 
       {-traceM $ "fittedφs: " ++ show fittedφs-}
 
