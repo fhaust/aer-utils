@@ -26,6 +26,7 @@ import           Control.Lens
 
 import           Data.Thyme.Clock
 import           Data.Thyme.Time
+import           Data.Thyme.Format
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as V
 import qualified Data.Vector.Generic as G
@@ -46,8 +47,11 @@ import qualified Numeric.AD as AD
 
 import           Linear
 
+import           System.Locale
+import           System.Directory
 
 import           OlshausenOnStreams.ArtificialData
+import           OlshausenOnStreams.Plotting
 
 import           Debug.Trace
 
@@ -188,7 +192,7 @@ logit x = log (1+x*x)
 -- | TODO give parameters as ... parameters
 errorFunction :: (Floating a, Ord a)
   => Events a -> [Events a] -> [Event a] -> a
-errorFunction patch φs as = r + b
+errorFunction patch φs as = r -- + b
     where bos = 6.96
           λ   = 100
           σ   = 0.316 
@@ -203,13 +207,6 @@ doTheTimeWarp patch φs as = fromFlatList <$> AD.gradientDescent go (toFlatList 
         go ts = errorFunction (AD.auto <$$> patch) (AD.auto <$$$> φs) (fromFlatList ts)
 
 
-infixl 4 <$$>
-(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
-f <$$> x = fmap (fmap f) x
-
-infixl 4 <$$$>
-(<$$$>) :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
-f <$$$> x = fmap (fmap (fmap f)) x
 
 toFlatList :: [Event a] -> V.Vector a
 toFlatList = V.concat . fmap (V.fromList . toList)
@@ -269,58 +266,41 @@ updatePhi η φ patch = V.zipWith (+) φ (V.map ((η*c) *^) pds)
 
 
 
-{-oneIteration :: (Floating a, Ord a) => [Patch a] -> [Phi a] -> [Phi a]-}
-{-oneIteration patches φs = fmap (\φ -> foldl' normUpdate φ patches) φs-}
-{-  where η           = 1 / (fromIntegral . length $ patches)-}
-{-        [>normPatches = map normalizeSTC patches<]-}
-{-        normUpdate φ patch = onNormalizedSTC φ (\φ -> updatePhi η φ (normalizeSTC patch))-}
-
 oneIteration' ::
   (Show a, Floating a, Ord a, Random a, MonadRandom m, NFData a) =>
   [Patch a] -> [Phi a] -> m [Phi a]
 oneIteration' patches φs = do
 
+    let numPatches = length patches
 
-    -- normalize patches
-    let normalizedPatches = map normalizeSTC patches
-
-    -- calculate mean and variance for phis
-    -- and normalize them
-    {-let means = mean <$> φs-}
-    {-    variances = stdDev <$> φs-}
-
-    {-let normalizedφs = zipWith3 (\φs m v -> fmap (\φ -> (φ - m) / v) φs) φs means variances-}
-    let normalizedφs = map normalizeSTC φs
-    {-traceM $ "normalizedφs: " ++ show normalizedφs-}
-
+    -- generate some random as
     randomAs <- replicateM (length patches) $ replicateM (length φs) getRandom
 
-    let scaledDirections = withStrategy (parList rdeepseq) 
-                         $ zipWith (oneIterationPatch (length patches) normalizedφs) normalizedPatches randomAs
-
-
-    -- push directions are summed up over all patches 
-    -- and applied to the normalized φs
-    let finalDirections = foldl1' (zipWith (V.zipWith (+))) scaledDirections
+    -- calculate push directions for all patches
+    let scaledDirections = foldl1' (zipWith (V.zipWith (\a b -> a + b ^/ (fromIntegral numPatches))))
+                         $ withStrategy (parList rdeepseq) 
+                         $ zipWith (oneIterationPatch φs) patches randomAs
 
     {-traceM $ "finalDirections: " ++ show scaledDirections-}
 
     -- apply updates
-    let updatedφs = zipWith (V.zipWith (+)) normalizedφs finalDirections
+    let updatedφs = zipWith (V.zipWith (+)) φs scaledDirections
 
     {-traceM $ "updatedφs: " ++ show updatedφs-}
 
     -- normalize φs again -> done
-    return $ map normalizeSTC updatedφs
+    {-return $ map normalizeSTC updatedφs-}
+    return updatedφs
 
-oneIterationPatch :: (Ord a, Floating a) => Int -> [Phi a] -> Patch a -> [V4 a] -> [V.Vector (V4 a)]
-oneIterationPatch numPatches normalizedφs patch randomAs = scaledDirections 
+oneIterationPatch :: (Ord a, Floating a) => [Phi a] -> Patch a -> [V4 a] -> [V.Vector (V4 a)]
+oneIterationPatch φs patch randomAs = scaledDirections 
 
           -- find as that best represent the given patch
-    where fittedAs = doTheTimeWarpAgain patch normalizedφs randomAs
+    where fittedAs = doTheTimeWarpAgain patch φs randomAs
 
           -- scale phis with the given as
-          fittedφs = zipWith (\a φ -> (a*) <$> φ) fittedAs normalizedφs
+          fittedφs = zipWith (\a φ -> (a*) <$> φ) fittedAs φs
+          {-fittedφs = normalizedφs-}
 
           -- at this point the phis are normalized and scaled according to
           -- the 'best' as, that is they match the normalized patches as
@@ -329,20 +309,10 @@ oneIterationPatch numPatches normalizedφs patch randomAs = scaledDirections
           pushDirections = map (\φ -> getPushDirections φ patch) fittedφs
 
 
-          -- push directions are scaled with several factors:
-          --  1: 'cost' as determinated by the Kai factor
-          --  2: number of patches
+          -- push directions are scaled with the kai factor:
           kaiFactor      = map (\φ -> min 1 ( 1 / (cost $ eventDTW φ patch))) fittedφs
-          patchFactor    = replicate (length fittedφs) (1 / fromIntegral numPatches)
-          totalFactor    = zipWith (*) kaiFactor patchFactor
 
-          scaledDirections = zipWith (\f d -> V.map (f *^) d) totalFactor pushDirections
-
-
-{-manyIterations 0 _       φs = return φs-}
-{-manyIterations n patches φs = do-}
-{-    φs' <- oneIteration' patches φs-}
-{-    manyIterations (n-1) patches φs'-}
+          scaledDirections = zipWith (\f d -> V.map (f *^) d) kaiFactor pushDirections
 
 
 instance Random a => Random (V4 a) where
@@ -354,11 +324,10 @@ instance Random a => Random (V4 a) where
 iterateNM :: Int -> (a -> IO a) -> a -> IO [a]
 iterateNM 0 _ _ = return []
 iterateNM n f x = do
-    traceM $ "iterations to go: " ++ show n
     tStart <- getCurrentTime
     x' <- f x 
     tEnd <- getCurrentTime
-    traceM $ "iteration took " ++ show (toMicroseconds (tEnd .-. tStart)) ++ "µs"
+    traceM $ "iteration " ++ show n ++ " took " ++ show (toMicroseconds (tEnd .-. tStart)) ++ "µs"
     xs' <- iterateNM (n-1) f x'
     return $ x' : xs'
 
@@ -366,20 +335,48 @@ test :: IO ()
 test = do
 
     traceM "running"
+    
+    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
+    let dn = "data/test_" ++ t ++ "/" 
+    createDirectoryIfMissing True dn
 
     let numPhis = 8
         sizePhis = 16
-        iterations = 10
+        iterations = 500
 
-    stcs <- replicateM 8 (sortEvents . V.fromList <$> randomPlane 128) :: IO [Events Float]
-    encodeFile "stcs.bin" (toList <$> stcs)
+    -- create random patches
+    {-stcs <- replicateM 2 (sortEvents . V.fromList <$> randomPlane 128) :: IO [Events Float]-}
+    a <- normalizeSTC . sortEvents . V.fromList <$> plane (V3 0 0 0) (V3 0 1 1) 128 :: IO (Events Float)
+    b <- normalizeSTC . sortEvents . V.fromList <$> plane (V3 0 0 0) (V3 0 1 (-1)) 128 :: IO (Events Float)
+    let stcs = [a,b]
+    encodeFile (dn ++ "stcs.bin") (toList <$> stcs)
 
-    phis <- replicateM numPhis $ createRandomEvents sizePhis  :: IO [Events Float]
-    {-let stc = V.fromList $ map fromDVSEvent $ extractSTC 5.5 7.2 55 72 55 72 $ movingEdge DVS.U 0.1-}
+    -- generate initial random phis
+    phis <- map normalizeSTC <$> (replicateM numPhis $ createRandomEvents sizePhis) :: IO [Events Float]
 
-
+    -- update φs many times
     phis' <- iterateNM iterations (oneIteration' stcs) phis :: IO [[Events Float]]
 
 
-    encodeFile "manyphis.bin" (toList <$$> phis')
+    encodeFile (dn ++ "phis.bin") (toList <$$> phis')
 
+    -- show phis
+    _ <- multiplotEvents . map normalizeSTC $ [a,b] ++ last phis'
+
+    -- write images
+    traceM "writing images"
+    forM_ (zip [0::Int ..] phis') $ \(i,p) -> do
+      let fn = dn ++ "it-" ++ show i ++ ".png"
+      multiPlotFile fn . map normalizeSTC $ stcs ++ p
+
+
+    return ()
+
+
+infixl 4 <$$>
+(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+f <$$> x = fmap (fmap f) x
+
+infixl 4 <$$$>
+(<$$$>) :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
+f <$$$> x = fmap (fmap (fmap f)) x

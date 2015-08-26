@@ -29,6 +29,7 @@ executable learngabors
                        thyme,
                        containers,
                        split,
+                       old-locale,
                        random,
                        MonadRandom,
                        GA,
