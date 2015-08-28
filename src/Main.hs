@@ -5,11 +5,11 @@
 
 module Main where
 
-import           OlshausenOnStreams
+import           IntegralBased
 
 main :: IO ()
 main = do
-    OlshausenOnStreams.test
+    IntegralBased.test 
     putStrLn "done"
 
 {-convertImage from to = do-}

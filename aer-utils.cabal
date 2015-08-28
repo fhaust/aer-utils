@@ -53,7 +53,8 @@ executable learngabors
                        data-ordlist,
                        gnuplot,
                        lens,
-                       binary
+                       binary,
+                       GaussQuadIntegration
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields
@@ -62,7 +63,7 @@ executable learngabors
                        -O2
                        -threaded 
                        -rtsopts 
-                       "-with-rtsopts=-A64m -H5m -w"
+                       "-with-rtsopts=-A64m -H5m"
                        -- -eventlog
                        ---fno-state-hack
   ghc-prof-options:    -fprof-auto -auto-all -caf-all

@@ -55,6 +55,7 @@ import           OlshausenOnStreams.Plotting
 
 import           Debug.Trace
 
+import           Math.GaussianQuadratureIntegration
 
 type Event a   = V4 a
 type Events a  = V.Vector (Event a)
@@ -264,8 +265,6 @@ updatePhi η φ patch = V.zipWith (+) φ (V.map ((η*c) *^) pds)
   where pds = getPushDirections φ patch
         c   = min 1 (1 / (cost $ eventDTW φ patch))
 
-
-
 oneIteration' ::
   (Show a, Floating a, Ord a, Random a, MonadRandom m, NFData a) =>
   [Patch a] -> [Phi a] -> m [Phi a]
@@ -335,6 +334,8 @@ test :: IO ()
 test = do
 
     traceM "running"
+
+    traceM $ "gauss: " ++ show gaussIntegral3d
     
     t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
     let dn = "data/test_" ++ t ++ "/" 
@@ -380,3 +381,45 @@ f <$$> x = fmap (fmap f) x
 infixl 4 <$$$>
 (<$$$>) :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
 f <$$$> x = fmap (fmap (fmap f)) x
+
+gaussIntegral3d :: Float
+gaussIntegral3d = nIntegrate128  (\z -> nIntegrate128 (\y -> nIntegrate128  (\x -> gauss (V3 x y z) identity) (-5) 5) (-5) 5) (-5) 5
+
+gauss x a = exp ( Linear.dot (negate x *! a) x)
+{-# INLINABLE gauss #-}
+
+
+monteCarlo2d :: IO Float
+monteCarlo2d = do
+
+    let n = 1000000
+
+    lTrue <- length . filter (\(V2 x y) -> y < gauss (V1 x) identity) <$> replicateM n (V2 <$> getRandomR (-5,5) <*> getRandomR (0,1) :: IO (V2 Float))
+
+    {-bs <- U.filter id <$> U.replicateM n $ do-}
+    {-    (V2 x y)  <-  -}
+    {-    return $ y < gauss (V1 x) identity-}
+
+    {-let lTrue = fromIntegral . U.length $ bs-}
+
+    return $ 10 * (fromIntegral lTrue / fromIntegral n)
+
+    {-rs <- U.replicateM n $ V2 <$> getRandomR (-5,5) -}
+    {-                          <*> getRandomR ( 0,1) :: IO (V2 Float]-}
+    {-let area = 10 * 1-}
+
+    {-let ratio = genericLength (filter (\(V2 x w) -> w < gauss (V1 x) identity) rs) / fromIntegral n-}
+
+    {-return $ area * ratio-}
+
+{-monteCarlo n = do-}
+{-    rs <- replicateM n $ V4 <$> getRandomR (-5,5) -}
+{-                            <*> getRandomR (-5,5)-}
+{-                            <*> getRandomR (-5,5)-}
+{-                            <*> getRandomR ( 0,1) :: IO [V4 Float]-}
+{-    let bs = map (\(V4 x y z w) -> w < gauss (V3 x y z) identity) rs-}
+{-        area = 10 * 10 * 10 * 1-}
+
+{-    let ratio = genericLength (filter id bs) / genericLength bs-}
+
+{-    return $ area * ratio-}
