@@ -38,7 +38,8 @@ executable learngabors
                        vector-algorithms,
                        parallel,
                        JuicyPixels,
-                       --hmatrix,
+                       hmatrix,
+                       hmatrix-gsl,
                        bytestring,
                        ad,
                        directory,
@@ -54,7 +55,8 @@ executable learngabors
                        gnuplot,
                        lens,
                        binary,
-                       GaussQuadIntegration
+                       GaussQuadIntegration,
+                       erf
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields

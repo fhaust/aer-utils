@@ -22,29 +22,9 @@ import           Data.Foldable
 
 import           Linear
 
-wave3d :: Frame.T (Graph3D.T Double Double Double)
-wave3d =
-   let meshNodes = linearScale 20 (-2,2)
-   in  Frame.cons
-          (Opts.grid True $
-           Opts.view 42 17 1 1 $
-           Opts.xRange3d (-2.5,2.5) $
-           Opts.yRange3d (-2.5,2.5) $
-           defltOpts) $
-       Plot3D.surface
-          meshNodes meshNodes
-          (\x y -> cos(x*x+y*y))
-
-lissajous3d :: Frame.T (Graph3D.T Double Double Double)
-lissajous3d =
-   let t = linearScale 300 (-pi, pi)
-       f n = map (sin . (*) n) t
-   in  Frame.cons defltOpts $
-       Plot3D.cloud Graph3D.impulses $
-       zip3 (f 3) (f 4) (f 9)
 
 
-eventsToPlot es = Plot3D.cloud Graph3D.points . map (\(V4 t x y v) -> (x,y,t)) . toList $ es 
+eventsToPlot es = Plot3D.cloud Graph3D.points . map (\(V3 x y z) -> (x,y,z)) . toList $ es 
 
 plotEvents es = GP.plotDefault $  Frame.cons defltOpts (eventsToPlot es)
 multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
@@ -53,14 +33,14 @@ plotFile fn es = GP.plot terminal gfx
   where terminal = PNG.cons fn
         gfx      = Frame.cons (defltOpts) (eventsToPlot es)
 
-multiPlotFile fn es = GP.plot terminal gfx
+multiplotFile fn es = GP.plot terminal gfx
   where terminal = PNG.cons fn
         gfx      = Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
 
 
 defltOpts :: (Atom.C x, Atom.C y, Atom.C z)
           => Opts.T (Graph3D.T x y z)
-defltOpts = Opts.key False
+defltOpts = Opts.key True
           . Opts.xLabel "x pos" 
           . Opts.yLabel "y pos" 
           . Opts.zLabel "time (s)" 
