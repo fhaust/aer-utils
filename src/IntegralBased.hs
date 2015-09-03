@@ -4,11 +4,17 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MonadComprehensions #-}
 
 module IntegralBased  where
 
 import           Data.Number.Erf
 import           Data.List
+import           Data.Binary
+import           Data.Thyme
+
+import           System.Directory
+import           System.Locale
 
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as S
@@ -16,7 +22,9 @@ import qualified Data.Vector.Storable as S
 import           Linear
 
 
+import           Control.Monad
 import           Control.Monad.Random
+import           Control.Parallel.Strategies
 
 import           Debug.Trace
 
@@ -57,21 +65,6 @@ stDistance patch phis coeffs = realIntegral' (V.toList (phis' V.++ patches')) (V
 
 
 
-test = do
-
-
-    patch <- V.replicateM 16 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.5) :: IO (Patch Double)
-    phis  <- V.replicateM 4 $ V.replicateM 16 
-                            $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)
-
-    randomAs <- V.replicateM (length phis) getRandom :: IO (As Double)
-
-
-    {-let fittedAs = gradientDescentToFindAs patch phis randomAs-}
-
-    {-putStrLn $ show (fittedAs !! 0)-}
-
-    return (patch, phis, randomAs)
 
 
 
@@ -101,11 +94,13 @@ oneIteration :: Patches Double -> Phis Double -> Phis Double
 oneIteration patches phis = V.zipWith (V.zipWith (+)) phis pushVs
 
     where pushVs = collapsePushVectors
+                 . withStrategy (parTraversable rdeepseq)
                  . V.map (\patch -> oneIterationPatch patch phis) 
                  $ patches
 
 pushVector :: Num a => (V3 a -> V3 a) -> Phi a -> a -> V.Vector (V3 a)
-pushVector dPatch phi fittedA = V.map (\e -> fittedA *^ dPatch e) phi
+pushVector dPatch phi fittedA = V.map (\e -> η * fittedA *^ dPatch e) phi
+  where η = 1000
 
 pushVectors :: Num a => (V3 a -> V3 a) -> Phis a -> As a -> V.Vector (V.Vector (V3 a))
 pushVectors dPatch = V.zipWith (pushVector dPatch)
@@ -138,10 +133,18 @@ realIntegral' vs (V3 lx ly lz) (V3 hx hy hz) = indefIntegral hx hy hz  - indefIn
                                              - indefIntegral lx hy hz  + indefIntegral lx hy lz  + indefIntegral lx ly hz  - indefIntegral lx ly lz 
     where indefIntegral x y z = realIntegral vs (V3 x y z)
 
-realIntegral vs (V3 x y z) = foo + bar
+-- | the integral as calculated by hand (and SAGE)
+realIntegralOld vs (V3 x y z) = foo + bar
     where foo = 1/8*pi**(3/2) * sum [ a**2 * erf(x - b) * erf(y - c) * erf(z - d) | (V4 a b c d) <- vs ]
           bar = 1/4*pi**(3/2) * sum [ sum [ aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2) * exp( - 1/4*(bi-bj)**2 - 1/4*(ci-cj)**2  - 1/4*(di-dj)**2) | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]
 
+-- | the integral "optimized"
+realIntegral vs (V3 x y z) = foo
+    where foo = 1/8*pi**(3/2) * sum [ fooInner vi + 2 * sum [ barInner vi vj | vj <- js ] | (vi:js) <- tails vs ]
+          fooInner (V4 a b c d) = a**2 * erf(x - b) * erf(y - c) * erf(z - d)
+          barInner (V4 ai bi ci di) (V4 aj bj cj dj)
+            = aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2)
+            * exp( - 1/4 * ((bi-bj)**2 + (ci-cj)**2 + (di-dj)) )
 
 realDerivateX vs (V3 x y z) = -2 * foo * bar
   where foo = sum [ a * (x - b) * gauss (V4 a (x-b) (y-c) (z-d))  | (V4 a b c d) <- vs ]
@@ -162,6 +165,33 @@ realDerivates vs v = V3 (realDerivateX vs v) (realDerivateY vs v) (realDerivateZ
 {-  where foo = (pi/4) * sum [ a**2 * exp(-(c-y)^2) * erf(d - z) | (V4 a b c d) <- vs ]-}
 {-        bar = (pi/2) * sum [ sum [ ai*aj * exp(-(1/4)*(bi+bj-2*x)**2) * erf ((1/2)*(ci+cj-2*y)) * erf ((1/2)*(di+dj-2*z)) * exp ((1/4)*( -(bi-bj)**2 - (ci-cj)**2 - (di-dj)**2))  | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]-}
 
-realIntegralDiffX vs (V3 x y z) = foo + bar
-  where foo = (pi/4) * sum [ a**2 * erf(y - c) * erf(z - d) * exp(-x**2 + 2*x*b - b**2) | (V4 a b c d) <- vs ]
-        bar = (pi/2) * sum [ ai * sum [ aj*erf(y - 1/2*ci - 1/2*cj)*erf(z - 1/2*di - 1/2*dj) * exp(-x**2 + x*bi - 1/2*bi**2 + x*bj - 1/2*bj**2 - 1/4*ci**2 + 1/2*ci*cj - 1/4*cj**2 - 1/4*di**2 + 1/2*di*dj - 1/4*dj**2) | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]
+{-realIntegralDiffX vs (V3 x y z) = foo + bar-}
+{-  where foo = (pi/4) * sum [ a**2 * erf(y - c) * erf(z - d) * exp(-x**2 + 2*x*b - b**2) | (V4 a b c d) <- vs ]-}
+{-        bar = (pi/2) * sum [ ai * sum [ aj*erf(y - 1/2*ci - 1/2*cj)*erf(z - 1/2*di - 1/2*dj) * exp(-x**2 + x*bi - 1/2*bi**2 + x*bj - 1/2*bj**2 - 1/4*ci**2 + 1/2*ci*cj - 1/4*cj**2 - 1/4*di**2 + 1/2*di*dj - 1/4*dj**2) | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]-}
+
+
+test = do
+
+
+    patches <- V.replicateM 2 (V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.5)) :: IO (Patches Double)
+    phis  <- V.replicateM 4 $ V.replicateM 16 
+                            $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)
+
+    let phis' = iterate (oneIteration (patches)) phis
+    
+
+    {-let fittedAs = gradientDescentToFindAs patch phis randomAs-}
+
+    
+    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
+    let dn = "data/integration_based_" ++ t ++ "/" 
+    createDirectoryIfMissing True dn
+    
+
+    forM_ (zip [0..] phis') $ \ (i,phi) -> do
+      putStrLn $ "running iteration " ++ show i
+      encodeFile (dn ++ "it_" ++ show i ++ ".bin") (V.toList . V.map V.toList $ phi)
+
+      
+
+    return ()

@@ -9,7 +9,8 @@ import           IntegralBased
 
 main :: IO ()
 main = do
-    IntegralBased.test 
+    putStrLn "starting"
+    _ <- IntegralBased.test 
     putStrLn "done"
 
 {-convertImage from to = do-}
