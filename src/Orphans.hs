@@ -1,4 +1,6 @@
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Orphans where
 
 import Control.Monad.Random

@@ -24,7 +24,7 @@ import           Linear
 
 
 
-eventsToPlot es = Plot3D.cloud Graph3D.points . map (\(V3 x y z) -> (x,y,z)) . toList $ es 
+eventsToPlot es = Plot3D.cloud Graph3D.points . fmap (\(V3 x y z) -> (x,y,z)) . toList $ es 
 
 plotEvents es = GP.plotDefault $  Frame.cons defltOpts (eventsToPlot es)
 multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
