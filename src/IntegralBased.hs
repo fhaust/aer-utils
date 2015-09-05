@@ -39,6 +39,8 @@ import qualified Numeric.LinearAlgebra as LA
 import           Numeric.GSL.Integration
 import           Numeric.GSL.Minimization
 
+import           GHC.Conc (numCapabilities)
+
 
 type Event a  = V3 a
 type Events a = V.Vector (Event a)
@@ -142,8 +144,10 @@ realIntegral vs (V3 x y z) = foo
           barInner (V4 ai bi ci di) (V4 aj bj cj dj)
             = aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2)
             * exp( - 1/4 * ((bi-bj)**2 + (ci-cj)**2 + (di-dj)) )
-          parM = withStrategy (parListChunk 8 rdeepseq)
+          parM = withOptStrat
 
+withOptStrat ls | length ls < numCapabilities = ls
+                | otherwise = withStrategy (parListChunk (length ls `div` numCapabilities) rdeepseq) ls
 
 
 -- derivates of the error function
