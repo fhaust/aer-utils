@@ -62,10 +62,10 @@ asError patch phis coeffs = realIntegral' (V.toList (phis' V.++ patches')) (-100
           patches' = addAs (-1) patch
 
 -- | find closest spike in the gradient field spanned by the patches
-findClosestPatchSpike :: Patches Double -> V3 Double -> (S.Vector Double, LA.Matrix Double)
-findClosestPatchSpike patches v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go (unpackV3 v)
+findClosestPatchSpike :: Patch Double -> V3 Double -> (S.Vector Double, LA.Matrix Double)
+findClosestPatchSpike patch v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go (unpackV3 v)
     where go = errFun ps . unsafePackV3
-          ps = V.toList $ addAs (-1) $ mergeSpikes patches
+          ps = V.toList $ addAs (-1) $ patch
 
 
 -- | TODO maybe fix this
