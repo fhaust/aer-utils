@@ -40,7 +40,7 @@ multiplotFile fn es = GP.plot terminal gfx
 
 defltOpts :: (Atom.C x, Atom.C y, Atom.C z)
           => Opts.T (Graph3D.T x y z)
-defltOpts = Opts.key True
+defltOpts = Opts.key False
           . Opts.xLabel "x pos" 
           . Opts.yLabel "y pos" 
           . Opts.zLabel "time (s)" 

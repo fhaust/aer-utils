@@ -13,6 +13,9 @@ import           Data.List
 import           Data.Binary
 import           Data.Thyme
 import           Data.Foldable
+import           Data.AffineSpace
+
+import           Text.Printf
 
 import           System.Directory
 import           System.Locale
@@ -62,10 +65,13 @@ asError patch phis coeffs = realIntegral' (V.toList (phis' V.++ patches')) (-100
           patches' = addAs (-1) patch
 
 -- | find closest spike in the gradient field spanned by the patches
-findClosestPatchSpike :: Patch Double -> V3 Double -> (S.Vector Double, LA.Matrix Double)
-findClosestPatchSpike patch v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go (unpackV3 v)
+{-findClosestPatchSpike' :: Patch Double -> _ -> (_, LA.Matrix Double)-}
+findClosestPatchSpike' patch v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go v
     where go = errFun ps . unsafePackV3
           ps = V.toList $ addAs (-1) $ patch
+
+findClosestPatchSpike :: Patch Double -> V3 Double -> V3 Double
+findClosestPatchSpike patch v = unsafePackV3 $ fst $ findClosestPatchSpike' patch $ unpackV3 v
 
 
 -- | TODO maybe fix this
@@ -87,22 +93,21 @@ oneIteration patches phis = V.zipWith (V.zipWith (+)) phis pushVs
                  . V.map (\patch -> oneIterationPatch patch phis) 
                  $ patches
 
-pushVector :: (Epsilon a, Floating a) => (V3 a -> V3 a) -> Phi a -> a -> V.Vector (V3 a)
-pushVector dPatch phi fittedA = V.map (\e -> fittedA *^ normalize (dPatch e)) phi
+{-pushVector :: (Epsilon a, Floating a) => (V3 a -> V3 a) -> Phi a -> a -> V.Vector (V3 a)-}
+{-pushVector dPatch phi fittedA = V.map (\e -> fittedA *^ normalize (dPatch e)) phi-}
 
-pushVectors :: (Epsilon a, Floating a) => (V3 a -> V3 a) -> Phis a -> As a -> V.Vector (V.Vector (V3 a))
-pushVectors dPatch = V.zipWith (pushVector dPatch)
+pushVectors :: Patch Double -> Phis Double -> As Double  -> V.Vector (V.Vector (V3 Double))
+pushVectors patch phis as = V.zipWith (\a -> V.map (\e -> a *^ (findSpike e - e))) as phis
+    where findSpike = findClosestPatchSpike patch
 
 collapsePushVectors :: Fractional a => V.Vector (V.Vector (V.Vector (V3 a))) -> V.Vector (V.Vector (V3 a))
 collapsePushVectors vs = V.foldl1' (V.zipWith (V.zipWith (\a b -> a + (b/n)))) vs
     where n = fromIntegral $ length vs
 
 oneIterationPatch :: Patch Double -> Phis Double -> V.Vector (V.Vector (V3 Double))
-oneIterationPatch patch phis = pushVectors dPatch phis (V.convert fittedAs)
+oneIterationPatch patch phis = pushVectors patch phis (V.convert fittedAs)
     where -- find best as
           fittedAs = gradientDescentToFindAs (V.convert patch) phis (V.replicate (V.length phis) 1)
-          -- prepare gradient field
-          dPatch = realDerivates (V.toList . V.map (\(V3 x y z) -> V4 (-1) x y z) $ patch)
 
 
 gauss :: V4 Double -> Double
@@ -132,11 +137,12 @@ realIntegralOld vs (V3 x y z) = foo + bar
 
 -- | the integral "optimized"
 realIntegral vs (V3 x y z) = foo
-    where foo = 1/8*pi**(3/2) * sum [ fooInner vi + 2 * sum [ barInner vi vj | vj <- js ] | (vi:js) <- tails vs ]
+    where foo = 1/8*pi**(3/2) * (sum.parM) [ fooInner vi + 2 * sum [ barInner vi vj | vj <- js ] | (vi:js) <- tails vs ]
           fooInner (V4 a b c d) = a**2 * erf(x - b) * erf(y - c) * erf(z - d)
           barInner (V4 ai bi ci di) (V4 aj bj cj dj)
             = aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2)
             * exp( - 1/4 * ((bi-bj)**2 + (ci-cj)**2 + (di-dj)) )
+          parM = withStrategy (parListChunk 8 rdeepseq)
 
 
 
@@ -157,34 +163,64 @@ realDerivateZ vs (V3 x y z) = -2 * foo * bar
 realDerivates vs v = V3 (realDerivateX vs v) (realDerivateY vs v) (realDerivateZ vs v)
 
 
-test = do
 
 
-    patches <- V.replicateM 1 (V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.5)) :: IO (Patches Double)
-    phis  <- V.replicateM 2 $ V.replicateM 16 
+
+testData = do
+    patchA <- V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.0) :: IO (Patch Double)
+    patchB <- V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 1.0) :: IO (Patch Double)
+    let patches = V.fromList [patchA, patchB]
+
+    phis  <- V.replicateM 8 $ V.replicateM 16 
                             $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)
 
+    return (patches,phis)
+
+test = do
+
+    (patches,phis) <- testData
+
+
     let phis' = iterate (oneIteration (patches)) phis
-    
 
-    {-let fittedAs = gradientDescentToFindAs patch phis randomAs-}
 
-    
-    {-t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime-}
-    {-let dn = "data/integration_based_" ++ t ++ "/" -}
-    {-createDirectoryIfMissing True dn-}
-    
 
-    {-forM_ (zip [0..] phis') $ \ (i,phi) -> do-}
-    {-  putStrLn $ "running iteration " ++ show i-}
-    {-  encodeFile (dn ++ "it_" ++ show i ++ ".bin") (V.toList . V.map V.toList $ phi)-}
+    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
+    let dn = "data/integration_based_" ++ t ++ "/" 
+    createDirectoryIfMissing True dn
 
-      
+    savePatches (dn ++ "patches.bin") patches
+
+
+    forM_ (zip [0::Int ..] phis') $ \ (i,phi) -> do
+      putStr $ "running iteration " ++ show i ++ " ... "
+      tStart <- getCurrentTime
+      encodeFile (dn ++ printf "phis_%05d.bin" i) (V.toList . V.map V.toList $ phi)
+      tEnd <- getCurrentTime
+
+      putStrLn $ "took " ++ show (tEnd .-. tStart)
+
+
+
 
     return (patches,phis,phis')
 
+savePatches :: FilePath -> Patches Double -> IO ()
+savePatches fn patches = encodeFile fn (V.toList . V.map V.toList $ patches)
+loadPatches :: FilePath -> IO (Patches Double)
+loadPatches fn = V.map V.fromList . V.fromList <$> decodeFile fn
 
+savePhis :: FilePath -> Phis Double -> IO ()
+savePhis fn phis = encodeFile fn (V.toList . V.map V.toList $ phis)
+loadPhis :: FilePath -> IO (Phis Double)
+loadPhis fn = V.map V.fromList . V.fromList <$> decodeFile fn
 
+loadDataset dn = do
+    patch <- loadPatches (dn ++ "/patches.bin")
+    phiNames <- init . sort . filter ("phis" `isPrefixOf`) <$> getDirectoryContents dn
+    phis <- mapM (\n -> loadPhis $ dn ++ "/" ++ n) phiNames
+
+    return (patch,phis)
 
 -------------- U T I L I T Y ------------------
 
