@@ -12,12 +12,14 @@ import           Data.Number.Erf
 import           Data.List
 import           Data.Binary
 import           Data.Thyme
+import           Data.Foldable
 
 import           System.Directory
 import           System.Locale
 
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as S
+import qualified Data.Vector.Generic as G
 {-import qualified Data.Vector.Unboxed as U-}
 import           Linear
 
@@ -30,6 +32,7 @@ import           Debug.Trace
 
 import           Orphans
 
+import qualified Numeric.LinearAlgebra as LA
 import           Numeric.GSL.Integration
 import           Numeric.GSL.Minimization
 
@@ -45,49 +48,35 @@ type Patches a = V.Vector (Patch a)
 type Phis a    = V.Vector (Phi a)
 
 
+-- | this function calculates a set of coefficients that
+-- | scales the given phis to match the given patch best
+-- | this is done by a gradient descent over the error
+-- | function below
 gradientDescentToFindAs :: Patch Double -> Phis Double -> As Double -> S.Vector Double
-gradientDescentToFindAs patch phis randomAs = fst $ minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) (\v -> stDistance patch phis (V.convert v)) (V.convert randomAs)
-
-
-{-gradientDescentToUpdatePhis patch phis fittedAs =-}
+gradientDescentToFindAs patch phis randomAs = fst $ minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) (\v -> asError patch phis (V.convert v)) (V.convert randomAs)
 
 -- | distance between several spike trains
-stDistance :: Patch Double -> Phis Double -> As Double -> Double
-stDistance patch phis coeffs = realIntegral' (V.toList (phis' V.++ patches')) (V3 0 0 (-10)) (V3 128 128 10)
-    where 
-          phis'    = foldl (V.++) V.empty  $ V.zipWith (\a phi -> V.map (\(V3 x y z) -> V4 a x y z) phi) coeffs phis
-          patches' = V.map (\(V3 x y z) -> V4 (-1) x y z) patch
+asError :: Patch Double -> Phis Double -> As Double -> Double
+asError patch phis coeffs = realIntegral' (V.toList (phis' V.++ patches')) (-1000) 1000 --(V3 0 0 (-10)) (V3 128 128 10)
+    where phis'    = foldl (V.++) V.empty  $ V.zipWith (\a phi -> addAs a phi) coeffs phis
+          patches' = addAs (-1) patch
+
+-- | find closest spike in the gradient field spanned by the patches
+findClosestPatchSpike :: Patches Double -> V3 Double -> (S.Vector Double, LA.Matrix Double)
+findClosestPatchSpike patches v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go (unpackV3 v)
+    where go = errFun ps . unsafePackV3
+          ps = V.toList $ addAs (-1) $ mergeSpikes patches
+
+
+-- | TODO maybe fix this
+-- findClosestPatchSpikeD :: Patches Double -> V3 Double -> (S.Vector Double, LA.Matrix Double)
+-- findClosestPatchSpikeD patches v = minimizeVD VectorBFGS2 1e-6 1000 1 0.1 goE goD (unpackV3 v)
+--     where goE = errFun ps . unsafePackV3
+--           goD = unpackV3 . realDerivates ps . unsafePackV3
+--           ps = V.toList $ addAs (-1) $ mergeSpikes patches
 
 
 
--- not needed, is integrated in SAGE code
-{-gauss a b c x = a * exp ( Linear.dot (negate (x-b) *! c) (x-b))-}
-
-
-
-
-
-
-infixl 4 <$$>
-(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
-f <$$> x = fmap (fmap f) x
-
-infixl 4 <$$$>
-(<$$$>) :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
-f <$$$> x = fmap (fmap (fmap f)) x
-
-
-
-
-{-twoGaussIntegralR (V3 lx ly lz) (V3 hx hy hz) a b  = twoGaussIntegral a b hx hy hz - twoGaussIntegral a b lx ly lz-}
-
-{--- | copied from sage-}
-{-twoGaussIntegral (V4 aa ax ay az) (V4 ba bx by bz) x y z = -}
-{-    1/4*pi**(3/2)*aa*ba*erf(-1/2*ax - 1/2*bx + x)*erf(-1/2*ay - 1/2*by +-}
-{-    y)*erf(-1/2*az - 1/2*bz + z)*exp(-1/4*ax**2 - 1/4*ay**2 + 1/4*(az + bz)**2 --}
-{-    1/2*az**2 + 1/2*ax*bx - 1/4*bx**2 + 1/2*ay*by - 1/4*by**2 - 1/2*bz**2) +-}
-{-    1/8*pi**(3/2)*aa**2*erf(-ax + x)*erf(-ay + y)*erf(-az + z) +-}
-{-    1/8*pi**(3/2)*ba**2*erf(-bx + x)*erf(-by + y)*erf(-bz + z)-}
 
 
 oneIteration :: Patches Double -> Phis Double -> Phis Double
@@ -98,11 +87,10 @@ oneIteration patches phis = V.zipWith (V.zipWith (+)) phis pushVs
                  . V.map (\patch -> oneIterationPatch patch phis) 
                  $ patches
 
-pushVector :: Num a => (V3 a -> V3 a) -> Phi a -> a -> V.Vector (V3 a)
-pushVector dPatch phi fittedA = V.map (\e -> η * fittedA *^ dPatch e) phi
-  where η = 1000
+pushVector :: (Epsilon a, Floating a) => (V3 a -> V3 a) -> Phi a -> a -> V.Vector (V3 a)
+pushVector dPatch phi fittedA = V.map (\e -> fittedA *^ normalize (dPatch e)) phi
 
-pushVectors :: Num a => (V3 a -> V3 a) -> Phis a -> As a -> V.Vector (V.Vector (V3 a))
+pushVectors :: (Epsilon a, Floating a) => (V3 a -> V3 a) -> Phis a -> As a -> V.Vector (V.Vector (V3 a))
 pushVectors dPatch = V.zipWith (pushVector dPatch)
 
 collapsePushVectors :: Fractional a => V.Vector (V.Vector (V.Vector (V3 a))) -> V.Vector (V.Vector (V3 a))
@@ -120,9 +108,13 @@ oneIterationPatch patch phis = pushVectors dPatch phis (V.convert fittedAs)
 gauss :: V4 Double -> Double
 gauss (V4 a b c d) = a * exp( -0.5 * (b**2+c**2+d**2) )
 errFun :: [V4 Double] -> V3 Double -> Double
-errFun gs (V3 x y z) = (sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- gs ])**2
+errFun gs (V3 x y z) = sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- gs ]
+squaredErrFun :: [V4 Double] -> V3 Double -> Double
+squaredErrFun gs v = (errFun gs v)**2
+
+-- | numeric integration, mostly for comparison
 intFun :: [V4 Double] -> (Double,Double)
-intFun gs = integrateQAGI 1e-9 1000 (\z -> fst $ integrateQAGI 1e-9 1000 (\y -> fst $ integrateQAGI 1e-9 1000 (\x -> errFun gs (V3 x y z)) ))
+intFun gs = integrateQAGI 1e-9 1000 (\z -> fst $ integrateQAGI 1e-9 1000 (\y -> fst $ integrateQAGI 1e-9 1000 (\x -> squaredErrFun gs (V3 x y z)) ))
 
 {-realIntegral :: [V4 Double] -> Double-}
 {-realIntegral vs = (2*pi)**(3/2) * sum [ a**2 | (V4 a _ _ _) <- vs ]-}
@@ -146,6 +138,10 @@ realIntegral vs (V3 x y z) = foo
             = aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2)
             * exp( - 1/4 * ((bi-bj)**2 + (ci-cj)**2 + (di-dj)) )
 
+
+
+-- derivates of the error function
+
 realDerivateX vs (V3 x y z) = -2 * foo * bar
   where foo = sum [ a * (x - b) * gauss (V4 a (x-b) (y-c) (z-d))  | (V4 a b c d) <- vs ]
         bar = sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- vs ]
@@ -161,20 +157,11 @@ realDerivateZ vs (V3 x y z) = -2 * foo * bar
 realDerivates vs v = V3 (realDerivateX vs v) (realDerivateY vs v) (realDerivateZ vs v)
 
 
-{-realIntegralDiffX vs (V3 x y z) = foo + bar-}
-{-  where foo = (pi/4) * sum [ a**2 * exp(-(c-y)^2) * erf(d - z) | (V4 a b c d) <- vs ]-}
-{-        bar = (pi/2) * sum [ sum [ ai*aj * exp(-(1/4)*(bi+bj-2*x)**2) * erf ((1/2)*(ci+cj-2*y)) * erf ((1/2)*(di+dj-2*z)) * exp ((1/4)*( -(bi-bj)**2 - (ci-cj)**2 - (di-dj)**2))  | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]-}
-
-{-realIntegralDiffX vs (V3 x y z) = foo + bar-}
-{-  where foo = (pi/4) * sum [ a**2 * erf(y - c) * erf(z - d) * exp(-x**2 + 2*x*b - b**2) | (V4 a b c d) <- vs ]-}
-{-        bar = (pi/2) * sum [ ai * sum [ aj*erf(y - 1/2*ci - 1/2*cj)*erf(z - 1/2*di - 1/2*dj) * exp(-x**2 + x*bi - 1/2*bi**2 + x*bj - 1/2*bj**2 - 1/4*ci**2 + 1/2*ci*cj - 1/4*cj**2 - 1/4*di**2 + 1/2*di*dj - 1/4*dj**2) | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]-}
-
-
 test = do
 
 
-    patches <- V.replicateM 2 (V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.5)) :: IO (Patches Double)
-    phis  <- V.replicateM 4 $ V.replicateM 16 
+    patches <- V.replicateM 1 (V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.5)) :: IO (Patches Double)
+    phis  <- V.replicateM 2 $ V.replicateM 16 
                             $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)
 
     let phis' = iterate (oneIteration (patches)) phis
@@ -183,15 +170,46 @@ test = do
     {-let fittedAs = gradientDescentToFindAs patch phis randomAs-}
 
     
-    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
-    let dn = "data/integration_based_" ++ t ++ "/" 
-    createDirectoryIfMissing True dn
+    {-t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime-}
+    {-let dn = "data/integration_based_" ++ t ++ "/" -}
+    {-createDirectoryIfMissing True dn-}
     
 
-    forM_ (zip [0..] phis') $ \ (i,phi) -> do
-      putStrLn $ "running iteration " ++ show i
-      encodeFile (dn ++ "it_" ++ show i ++ ".bin") (V.toList . V.map V.toList $ phi)
+    {-forM_ (zip [0..] phis') $ \ (i,phi) -> do-}
+    {-  putStrLn $ "running iteration " ++ show i-}
+    {-  encodeFile (dn ++ "it_" ++ show i ++ ".bin") (V.toList . V.map V.toList $ phi)-}
 
       
 
-    return ()
+    return (patches,phis,phis')
+
+
+
+
+-------------- U T I L I T Y ------------------
+
+mergeSpikes :: (G.Vector v0 (v1 a), G.Vector v1 a) => v0 (v1 a) -> v1 a
+mergeSpikes = G.foldl' (G.++) G.empty
+
+
+-- | add a coefficient to a spike
+addA a (V3 x y z) = V4 a x y z
+-- | add the same coefficient to a range of spikes
+addAs a vs = addA a <$> vs
+-- | 'addAs' specialized for Storable Vectors
+addAsS a vs = S.map (addA a) vs
+
+-- | create 'V3' from 'Vector'
+-- no checks are performed to guarantee that 'v' is of the correct size
+unsafePackV3 v = V3 (v G.! 0) (v G.! 1) (v G.! 2)
+
+unpackV3 v = G.fromListN 3 $ toList v
+
+
+infixl 4 <$$>
+(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+f <$$> x = fmap (fmap f) x
+
+infixl 4 <$$$>
+(<$$$>) :: (Functor f, Functor g, Functor h) => (a -> b) -> f (g (h a)) -> f (g (h b))
+f <$$$> x = fmap (fmap (fmap f)) x
