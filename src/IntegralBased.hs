@@ -84,7 +84,19 @@ findClosestPatchSpike patch v = unsafePackV3 $ fst $ findClosestPatchSpike' patc
 --           ps = V.toList $ addAs (-1) $ mergeSpikes patches
 
 
+--------------------------------------------------
 
+applyAntiGravity :: (Epsilon a, Floating a) => Phis a -> Phis a
+applyAntiGravity phis = G.map (G.map (\e -> e + go e)) phis
+  where go a = G.foldl' (\acc p -> acc + G.foldl' (\acc2 b -> acc2 + antiGravForce a b) 0 p) 0 phis
+  
+antiGravForce a b = if nearZero dir then 0 else fdir
+    where dir  = a - b
+          ndir = normalize dir
+          fdir = (1 / quadrance dir) *^ ndir
+
+
+--------------------------------------------------
 
 
 oneIteration :: Patches Double -> Phis Double -> Phis Double

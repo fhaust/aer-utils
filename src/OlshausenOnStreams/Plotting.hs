@@ -13,6 +13,7 @@ import qualified Graphics.Gnuplot.Frame as Frame
 import qualified Graphics.Gnuplot.Graph.ThreeDimensional as Graph3D
 import qualified Graphics.Gnuplot.Frame.OptionSet as Opts
 import qualified Graphics.Gnuplot.Value.Atom as Atom
+import qualified Graphics.Gnuplot.Value.Tuple as Tuple
 import qualified Graphics.Gnuplot.Terminal.SVG as SVG
 import qualified Graphics.Gnuplot.Terminal.PNG as PNG
 
@@ -38,12 +39,17 @@ multiplotFile fn es = GP.plot terminal gfx
         gfx      = Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
 
 
-defltOpts :: (Atom.C x, Atom.C y, Atom.C z)
+defltOpts :: (Num x, Atom.C x, Tuple.C x
+             ,Num y, Atom.C y, Tuple.C y
+             ,Fractional z, Atom.C z, Tuple.C z)
           => Opts.T (Graph3D.T x y z)
 defltOpts = Opts.key False
           . Opts.xLabel "x pos" 
           . Opts.yLabel "y pos" 
           . Opts.zLabel "time (s)" 
+          . Opts.xRange3d (-64, 224)
+          . Opts.yRange3d (-64, 224)
+          . Opts.zRange3d (-0.5, 1.5)
           $ Opts.deflt
 
 

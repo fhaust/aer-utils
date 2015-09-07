@@ -2,50 +2,142 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MonadComprehensions #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Main where
 
 import           IntegralBased
+import           Linear
+
+import           System.Directory
+import           System.Locale
+
+import           Text.Printf
+
+import qualified Data.AER.DVS128 as DVS
+import qualified Data.Vector as V
+import qualified Data.Vector.Storable as S
+
+import           Data.Thyme.Clock
+import           Data.Thyme.Format
+import           Data.Maybe
+import           Data.Function
+import           Data.AffineSpace
+import           Data.IORef
+
+
+import           Control.Monad
+import           Control.Monad.Random
+import           Control.Lens
+
+import           Debug.Trace
+
+_t = _z
 
 main :: IO ()
 main = do
     putStrLn "starting"
-    _ <- IntegralBased.test 
+    {-_ <- IntegralBased.test -}
+
+    let n = 2
+        windowSize = V3 5 5 0.1 -- 5px * 5px * 100ms windows
+        minSize    = 32          -- minimal number of elements in the window
+
+    -- load dataset
+    es <- convertToV3s <$> DVS.mmapDVSData "../aer/data/DVS128-citec-walk-fast.aedat"
+
+    -- create initial random phis
+    phis  <- V.replicateM 8 $ V.replicateM 16 
+                            $ (V3 <$> getRandomR (0,view _x windowSize)
+                                  <*> getRandomR (0,view _y windowSize)
+                                  <*> getRandomR (0,view _t windowSize)) :: IO (Phis Double)
+
+
+    -- create directory to store output
+    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
+    let dn = "data/integration_based_" ++ t ++ "/" 
+    createDirectoryIfMissing True dn
+
+    putStrLn "loaded dataset, now crunching"
+
+    -- run interations
+    phisPtr <- newIORef phis
+    forM_ ([0..]::[Int]) $ \i -> do
+
+      putStrLn $ "-- iteration " ++ show i ++ " --"
+      sTime <- getCurrentTime 
+      putStrLn $ "starttime: " ++ show sTime
+
+      -- select random patches
+      patches <- selectPatches minSize windowSize n es
+
+      -- run iteration
+      modifyIORef phisPtr (oneIteration patches)
+      phis' <- readIORef phisPtr
+
+      -- write out everything
+      savePatches (printf "%spatches%05d.bin" dn i) patches
+      savePhis    (printf "%sphis%05d.bin" dn i) phis'
+
+      eTime <- getCurrentTime
+      putStrLn $ "time taken: " ++ show (eTime .-. sTime)
+
+
     putStrLn "done"
 
-{-convertImage from to = do-}
-{-    f <- readFile from-}
-{-    let ss = map (U.fromList . map read . splitOn ",") $ lines f :: [U.Vector Double]-}
-{-        i  = generateImage (\x y -> realToFrac ((ss !! y) U.! x)) 512 512 :: Image PixelF-}
-{-    writeHDR to (promoteImage i)-}
 
 
 
 
 
+selectPatches minSize windowSize num es = go V.empty
+  where go ps | V.length ps >= num = return ps
+              | otherwise = do
+                  p <- selectPatch windowSize es
+                  if length p < minSize then go ps
+                                          else go (p `V.cons` ps)
+
+
+selectPatch :: MonadRandom m => V3 Double -> S.Vector (V3 Double) -> m (V.Vector (V3 Double))
+selectPatch (V3 sx sy st) es = do
+  x <- getRandomR (0, 128-sx)
+  y <- getRandomR (0, 128-sy)
+  t <- getRandomR (view _t $ S.head es, (view _t $ S.last es) - st)
+
+  {-traceM $ "(" ++ show x ++ "," ++ show y ++ "," ++ show t ++ ")"-}
+
+  return $ V.convert $ sliceSpaceTimeWindow (V3 x y t) (V3 (x+sx) (y+sy) (t+st)) es
 
 
 
 
+convertToV3 (DVS.Event (DVS.Address DVS.U x y) t) = Just (V3 (fromIntegral x) (fromIntegral y) (toSeconds t))
+convertToV3 _                                     = Nothing
 
-{-normalizeMat m = fmap (\a -> (a - low) / (high - low)) m-}
-{-    where low = minimum m-}
-{-          high = maximum m-}
+convertToV3s :: S.Vector (DVS.Event DVS.Address) -> S.Vector (V3 Double)
+convertToV3s = S.fromList . catMaybes . map convertToV3 . S.toList
+
+sliceSpaceTimeWindow (V3 lx ly lt) (V3 hx hy ht) = S.filter go . sliceTimeWindow lt ht
+  where go (V3 x y t) =  x >= lx && x <= hx
+                      && y >= ly && y <= hy
+
+sliceTimeWindow :: Double -> Double -> S.Vector (V3 Double) -> S.Vector (V3 Double)
+sliceTimeWindow lt ht es = S.slice (li) (hi - li) es
+    where bs x = binarySearch (compare `on` view _t) es (V3 0 0 x)
+          li   = bs lt
+          hi   = bs ht
+
+binarySearch cmp vec e = binarySearchByBounds cmp vec e 0 (S.length vec - 1)
+
+binarySearchByBounds cmp vec e = loop
+ where
+ loop !l !u
+   | u <= l    = l
+   | otherwise = let e' = S.unsafeIndex vec k
+                 in case cmp e' e of
+                      LT -> loop (k+1) u
+                      EQ -> k
+                      GT -> loop l     k
+  where k = (u + l) `div` 2
 
 
-{-createTimeFronts :: NominalDiffTime -> [DVS.Event DVS.Address] -> [M.Mat 128 128 Float]-}
-{-createTimeFronts windowSize es = ts-}
-
-{-    where ts = map ( normalizeMat  -- normalize to window sizes-}
-{-                   . M.mkMatU . U.toList . U.map (realToFrac . (`mod'` windowSize) . fst) -- convert to matrix-}
-{-                   . timeFront           -- create timefronts-}
-{-                   )-}
-{-             . filter ((>50) . length) -- only use windows with at least some content-}
-{-             . extractWindows windowSize -}
-{-             $ es -}
-
-
-
-{-timeFrontToImage :: (KnownNat w, KnownNat h, RealFrac a) => M.Mat w h a -> Image Pixel16-}
-{-timeFrontToImage ts = generateImage go (M.width ts) (M.height ts)-}
-{-    where go x y = round . (*2^16) $ M.index ts x y-}
