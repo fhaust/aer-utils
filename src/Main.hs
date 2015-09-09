@@ -49,7 +49,7 @@ main = do
     es <- convertToV3s <$> DVS.mmapDVSData "../aer/data/DVS128-citec-walk-fast.aedat"
 
     -- create initial random phis
-    initialPhis  <- V.replicateM 2 $ V.replicateM 16 
+    initialPhis  <- V.replicateM 2 $ S.replicateM 16 
                                    $ (V3 <$> getRandomR (0,view _x windowSize)
                                          <*> getRandomR (0,view _y windowSize)
                                          <*> getRandomR (0,view _t windowSize)) :: IO (Phis Double)
@@ -88,11 +88,11 @@ main = do
       case oldTid of
         (Just tid) -> killThread tid
         Nothing    -> return ()
-      tid <- multiplotEventsAsync ({-V.toList patches ++-} V.toList phis)
+      tid <- multiplotEventsAsyncS phis
       writeIORef guiPtr (Just tid)
 
       -- write out image
-      _ <- multiplotFile (printf "%sit-%05d.png" dn i) (V.toList phis')
+      _ <- multiplotFileS (printf "%sit-%05d.png" dn i) phis'
 
       eTime <- getCurrentTime
       putStrLn $ "time taken: " ++ show (eTime .-. sTime)
@@ -105,8 +105,8 @@ normalizePatches :: Patches Double -> Patches Double
 normalizePatches = V.map normalizePatch
 
 normalizePatch :: Patch Double -> Patch Double
-normalizePatch patch = V.map (\(V3 x y t) -> V3 (x-minX) (y-minY) (t-minT)) patch
-  where mins = V.foldl1' (\(V3 mx my mt) (V3 x y t) -> V3 (min mx x) (min my y) (min mt t)) 
+normalizePatch patch = S.map (\(V3 x y t) -> V3 (x-minX) (y-minY) (t-minT)) patch
+  where mins = S.foldl1' (\(V3 mx my mt) (V3 x y t) -> V3 (min mx x) (min my y) (min mt t)) 
         (V3 minX minY minT) = mins patch
 
 
@@ -115,11 +115,11 @@ selectPatches minSize windowSize num es = go V.empty
   where go ps | V.length ps >= num = return ps
               | otherwise = do
                   p <- selectPatch windowSize es
-                  if length p < minSize then go ps
+                  if S.length p < minSize then go ps
                                           else go (p `V.cons` ps)
 
 
-selectPatch :: MonadRandom m => V3 Double -> S.Vector (V3 Double) -> m (V.Vector (V3 Double))
+selectPatch :: MonadRandom m => V3 Double -> S.Vector (V3 Double) -> m (S.Vector (V3 Double))
 selectPatch (V3 sx sy st) es = do
   x <- getRandomR (0, 128-sx)
   y <- getRandomR (0, 128-sy)
@@ -127,7 +127,7 @@ selectPatch (V3 sx sy st) es = do
 
   {-traceM $ "(" ++ show x ++ "," ++ show y ++ "," ++ show t ++ ")"-}
 
-  return $ V.convert $ sliceSpaceTimeWindow (V3 x y t) (V3 (x+sx) (y+sy) (t+st)) es
+  return $ sliceSpaceTimeWindow (V3 x y t) (V3 (x+sx) (y+sy) (t+st)) es
 
 
 

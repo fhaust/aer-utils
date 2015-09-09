@@ -56,7 +56,8 @@ executable learngabors
                        lens,
                        binary,
                        GaussQuadIntegration,
-                       erf
+                       erf,
+                       fast-math
   main-is:             Main.hs
   ghc-options:         -Wall 
                        -funbox-strict-fields

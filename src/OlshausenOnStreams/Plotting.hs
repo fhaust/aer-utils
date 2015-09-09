@@ -24,22 +24,28 @@ import           Data.Foldable
 
 import           Linear
 
+import           GHC.IO.Exception
+
+import qualified Data.Vector.Storable as S
 
 
-eventsToPlot es = Plot3D.cloud Graph3D.points . fmap (\(V3 x y z) -> (x,y,z)) . toList $ es 
+eventsToPlot ::
+  (Foldable t, Tuple.C a, Atom.C a) => t (V3 a) -> Plot3D.T a a a
+eventsToPlot es = Plot3D.cloud Graph3D.points . fmap (\(V3 x y z) -> (x,y,z)) . toList $ es
 
-plotEvents es = GP.plotDefault $  Frame.cons defltOpts (eventsToPlot es)
-multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
+plotEvents es = multiplotEvents [es]
+multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ map eventsToPlot es)
 
-multiplotEventsAsync es = GP.plotAsync (X11.cons) $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
+multiplotEventsAsync es = GP.plotAsync (X11.cons) $ Frame.cons defltOpts (mconcat $ map eventsToPlot es)
+multiplotEventsAsyncS es = multiplotEventsAsync (toList . fmap S.toList $ es)
 
-plotFile fn es = GP.plot terminal gfx
-  where terminal = PNG.cons fn
-        gfx      = Frame.cons (defltOpts) (eventsToPlot es)
+plotFile fn es = multiplotFile fn [es]
 
 multiplotFile fn es = GP.plot terminal gfx
   where terminal = PNG.cons fn
         gfx      = Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
+
+multiplotFileS fn es = multiplotFile fn (toList . fmap S.toList $ es)
 
 
 defltOpts :: (Num x, Atom.C x, Tuple.C x
