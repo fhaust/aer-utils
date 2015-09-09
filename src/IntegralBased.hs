@@ -41,6 +41,8 @@ import           Numeric.GSL.Minimization
 
 import           GHC.Conc (numCapabilities)
 
+import           OlshausenOnStreams.Plotting
+
 
 type Event a  = V3 a
 type Events a = V.Vector (Event a)
@@ -93,7 +95,7 @@ applyAntiGravity phis = G.map (G.map (\e -> e + go e)) phis
 antiGravForce a b = if nearZero dir then 0 else fdir
     where dir  = a - b
           ndir = normalize dir
-          fdir = (1 / quadrance dir) *^ ndir
+          fdir = (0.001 / norm dir) *^ ndir
 
 
 --------------------------------------------------
@@ -102,7 +104,8 @@ antiGravForce a b = if nearZero dir then 0 else fdir
 oneIteration :: Patches Double -> Phis Double -> Phis Double
 oneIteration patches phis = V.zipWith (V.zipWith (+)) phis pushVs
 
-    where pushVs = collapsePushVectors
+    where pushVs = -- applyAntiGravity
+                   collapsePushVectors
                  . withStrategy (parTraversable rdeepseq)
                  . V.map (\patch -> oneIterationPatch patch phis) 
                  $ patches
@@ -111,8 +114,9 @@ oneIteration patches phis = V.zipWith (V.zipWith (+)) phis pushVs
 {-pushVector dPatch phi fittedA = V.map (\e -> fittedA *^ normalize (dPatch e)) phi-}
 
 pushVectors :: Patch Double -> Phis Double -> As Double  -> V.Vector (V.Vector (V3 Double))
-pushVectors patch phis as = V.zipWith (\a -> V.map (\e -> a *^ (findSpike e - e))) as phis
+pushVectors patch phis as = V.zipWith (\a -> V.map (\e -> (a*eta) *^ (findSpike e - e))) as phis
     where findSpike = findClosestPatchSpike patch
+          eta       = 0.01
 
 collapsePushVectors :: Fractional a => V.Vector (V.Vector (V.Vector (V3 a))) -> V.Vector (V.Vector (V3 a))
 collapsePushVectors vs = V.foldl1' (V.zipWith (V.zipWith (\a b -> a + (b/n)))) vs
@@ -187,7 +191,7 @@ testData = do
     patchB <- V.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 1.0) :: IO (Patch Double)
     let patches = V.fromList [patchA, patchB]
 
-    phis  <- V.replicateM 8 $ V.replicateM 16 
+    phis  <- V.replicateM 2 $ V.replicateM 16 
                             $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)
 
     return (patches,phis)
@@ -237,6 +241,8 @@ loadDataset dn = do
     phis <- mapM (\n -> loadPhis $ dn ++ "/" ++ n) phiNames
 
     return (patch,phis)
+
+
 
 -------------- U T I L I T Y ------------------
 

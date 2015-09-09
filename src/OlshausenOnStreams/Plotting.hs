@@ -16,6 +16,7 @@ import qualified Graphics.Gnuplot.Value.Atom as Atom
 import qualified Graphics.Gnuplot.Value.Tuple as Tuple
 import qualified Graphics.Gnuplot.Terminal.SVG as SVG
 import qualified Graphics.Gnuplot.Terminal.PNG as PNG
+import qualified Graphics.Gnuplot.Terminal.X11 as X11
 
 import Graphics.Gnuplot.Plot.TwoDimensional (linearScale, )
 
@@ -29,6 +30,8 @@ eventsToPlot es = Plot3D.cloud Graph3D.points . fmap (\(V3 x y z) -> (x,y,z)) . 
 
 plotEvents es = GP.plotDefault $  Frame.cons defltOpts (eventsToPlot es)
 multiplotEvents es = GP.plotDefault $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
+
+multiplotEventsAsync es = GP.plotAsync (X11.cons) $ Frame.cons defltOpts (mconcat $ fmap eventsToPlot $ es)
 
 plotFile fn es = GP.plot terminal gfx
   where terminal = PNG.cons fn
@@ -47,9 +50,9 @@ defltOpts = Opts.key False
           . Opts.xLabel "x pos" 
           . Opts.yLabel "y pos" 
           . Opts.zLabel "time (s)" 
-          . Opts.xRange3d (-64, 224)
-          . Opts.yRange3d (-64, 224)
-          . Opts.zRange3d (-0.5, 1.5)
+          {-. Opts.xRange3d (-64, 224)-}
+          {-. Opts.yRange3d (-64, 224)-}
+          {-. Opts.zRange3d (-0.5, 1.5)-}
           $ Opts.deflt
 
 

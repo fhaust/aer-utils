@@ -25,10 +25,12 @@ import           Data.Function
 import           Data.AffineSpace
 import           Data.IORef
 
+import           OlshausenOnStreams.Plotting
 
 import           Control.Monad
 import           Control.Monad.Random
 import           Control.Lens
+import           Control.Concurrent
 
 import           Debug.Trace
 
@@ -39,7 +41,7 @@ main = do
     putStrLn "starting"
     {-_ <- IntegralBased.test -}
 
-    let n = 2
+    let n = 4 
         windowSize = V3 5 5 0.1 -- 5px * 5px * 100ms windows
         minSize    = 32          -- minimal number of elements in the window
 
@@ -47,10 +49,10 @@ main = do
     es <- convertToV3s <$> DVS.mmapDVSData "../aer/data/DVS128-citec-walk-fast.aedat"
 
     -- create initial random phis
-    phis  <- V.replicateM 8 $ V.replicateM 16 
-                            $ (V3 <$> getRandomR (0,view _x windowSize)
-                                  <*> getRandomR (0,view _y windowSize)
-                                  <*> getRandomR (0,view _t windowSize)) :: IO (Phis Double)
+    initialPhis  <- V.replicateM 2 $ V.replicateM 16 
+                                   $ (V3 <$> getRandomR (0,view _x windowSize)
+                                         <*> getRandomR (0,view _y windowSize)
+                                         <*> getRandomR (0,view _t windowSize)) :: IO (Phis Double)
 
 
     -- create directory to store output
@@ -61,7 +63,8 @@ main = do
     putStrLn "loaded dataset, now crunching"
 
     -- run interations
-    phisPtr <- newIORef phis
+    phisPtr <- newIORef initialPhis
+    guiPtr  <- newIORef Nothing
     forM_ ([0..]::[Int]) $ \i -> do
 
       putStrLn $ "-- iteration " ++ show i ++ " --"
@@ -69,15 +72,27 @@ main = do
       putStrLn $ "starttime: " ++ show sTime
 
       -- select random patches
-      patches <- selectPatches minSize windowSize n es
+      patches <- normalizePatches <$> selectPatches minSize windowSize n es
 
       -- run iteration
-      modifyIORef phisPtr (oneIteration patches)
-      phis' <- readIORef phisPtr
+      phis <- readIORef phisPtr
+      let phis' = oneIteration patches phis
+      writeIORef phisPtr phis'
 
       -- write out everything
       savePatches (printf "%spatches%05d.bin" dn i) patches
       savePhis    (printf "%sphis%05d.bin" dn i) phis'
+
+      -- display results
+      oldTid <- readIORef guiPtr
+      case oldTid of
+        (Just tid) -> killThread tid
+        Nothing    -> return ()
+      tid <- multiplotEventsAsync ({-V.toList patches ++-} V.toList phis)
+      writeIORef guiPtr (Just tid)
+
+      -- write out image
+      _ <- multiplotFile (printf "%sit-%05d.png" dn i) (V.toList phis')
 
       eTime <- getCurrentTime
       putStrLn $ "time taken: " ++ show (eTime .-. sTime)
@@ -86,7 +101,13 @@ main = do
     putStrLn "done"
 
 
+normalizePatches :: Patches Double -> Patches Double
+normalizePatches = V.map normalizePatch
 
+normalizePatch :: Patch Double -> Patch Double
+normalizePatch patch = V.map (\(V3 x y t) -> V3 (x-minX) (y-minY) (t-minT)) patch
+  where mins = V.foldl1' (\(V3 mx my mt) (V3 x y t) -> V3 (min mx x) (min my y) (min mt t)) 
+        (V3 minX minY minT) = mins patch
 
 
 
