@@ -67,7 +67,7 @@ gradientDescentToFindAs patch phis randomAs = fst $ minimizeV NMSimplex2 10e-9 1
 
 -- | distance between several spike trains
 asError :: Patch Double -> Phis Double -> As Double -> Double
-asError patch phis as = realIntegral' (phis' S.++ patches') (-1000) 1000 --(V3 0 0 (-10)) (V3 128 128 10)
+asError patch phis as = errorIntegral (phis' S.++ patches')
     where phis'    = V.foldl' (S.++) S.empty  $ V.zipWith (\a phi -> addAsS a phi) (V.convert as) phis
           patches' = addAsS (-1) patch
 
@@ -75,7 +75,7 @@ asError patch phis as = realIntegral' (phis' S.++ patches') (-1000) 1000 --(V3 0
 findClosestPatchSpike' :: Patch Double -> S.Vector Double -> (LA.Vector Double, LA.Matrix Double)
 findClosestPatchSpike' patch v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go v
     where go = errFun ps . unsafePackV3
-          ps = S.toList $ addAsS (-1) $ patch
+          ps = addAsS (-1) $ patch
 
 findClosestPatchSpike :: Patch Double -> V3 Double -> V3 Double
 findClosestPatchSpike patch v = unsafePackV3 $ fst $ findClosestPatchSpike' patch $ unpackV3 v
@@ -133,14 +133,14 @@ oneIterationPatch patch phis = pushVectors patch phis (V.convert fittedAs)
 
 gauss :: V4 Double -> Double
 gauss (V4 a b c d) = a * exp( -0.5 * (b**2+c**2+d**2) )
-errFun :: [V4 Double] -> V3 Double -> Double
-errFun gs (V3 x y z) = sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- gs ]
-squaredErrFun :: [V4 Double] -> V3 Double -> Double
+errFun :: S.Vector (V4 Double) -> V3 Double -> Double
+errFun gs (V3 x y z) = S.sum $ S.map (\(V4 a b c d) -> gauss (V4 a (x-b) (y-c) (z-d))) gs
+squaredErrFun :: S.Vector (V4 Double) -> V3 Double -> Double
 squaredErrFun gs v = (errFun gs v)**2
 
 -- | numeric integration, mostly for comparison
-intFun :: [V4 Double] -> (Double,Double)
-intFun gs = integrateQAGI 1e-9 1000 (\z -> fst $ integrateQAGI 1e-9 1000 (\y -> fst $ integrateQAGI 1e-9 1000 (\x -> squaredErrFun gs (V3 x y z)) ))
+intFun :: S.Vector (V4 Double) -> (Double,Double)
+intFun gs = integrateQAGI 1e-6 500 (\z -> fst $ integrateQAGI 1e-6 500 (\y -> fst $ integrateQAGI 1e-6 500 (\x -> squaredErrFun gs (V3 x y z)) ))
 
 {-realIntegral :: [V4 Double] -> Double-}
 {-realIntegral vs = (2*pi)**(3/2) * sum [ a**2 | (V4 a _ _ _) <- vs ]-}
@@ -157,6 +157,37 @@ realIntegral' vs (V3 lx ly lz) (V3 hx hy hz) = indefIntegral hx hy hz
                                              + indefIntegral lx ly hz
                                              - indefIntegral lx ly lz
     where indefIntegral x y z = realIntegral vs (V3 x y z)
+
+{-realIntegralJack :: S.Vector (V4 Double) -> Double-}
+{-realIntegralJack vs = coeff * fstSum * sndSum-}
+{-    where coeff = (2*pi)**(3/2)-}
+{-          fstSum = S.sum $ S.map (\(V4 a _ _ _) -> a*a + 2 * pi**(3/2)) vs-}
+{-          sndSum = V.sum $ V.map go (tailsS' vs)-}
+{-            where go vs' | S.length vs' < 1 = 0-}
+{-                         | otherwise        = S.sum $ S.map (go' (S.head vs')) vs'-}
+{-                            where go' (V4 ai bi ci di) (V4 aj bj cj dj) = ai * aj * g (bi-bj) (ci-cj) (di-dj)-}
+{-                                  g x y z = exp (-0.25 * (x*x+y*y+z*z))-}
+
+-- | this function calculates the integral of several
+-- | gauss bells from -∞ to ∞
+errorIntegral :: S.Vector (V4 Double) -> Double
+errorIntegral vs = pi**(3/2) * (fstSum + sndSum)
+  where fstSum = S.foldl' (\acc (V4 a _ _ _) -> acc + a^2) 0 vs
+        sndSum = 2 * mapSumPairs go vs
+        go (V4 aa ba ca da) (V4 ab bb cb db) = aa * ab * exp ( -0.25 * ( (ba-bb)^2 + (ca-cb)^2 + (da-db)^2  ) )
+
+-- | combine every element of the vector with every other element,
+-- | run a function on the pairings, then sum up the results
+-- | this is super ungeneric :)
+mapSumPairs ::
+  (Num a, S.Storable b) => (b -> b -> a) -> S.Vector b -> a
+mapSumPairs f = go
+  where go vs = S.foldl' (\acc v -> acc + f (S.head vs) v) 0 (S.tail vs)
+              + if S.length vs > 2 then go (S.tail vs) else 0
+{-# INLINABLE mapSumPairs #-}
+
+
+
 
 -- | the integral as calculated by hand (and SAGE)
 realIntegralOld vs (V3 x y z) = foo + bar

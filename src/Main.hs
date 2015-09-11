@@ -41,7 +41,7 @@ main = do
     putStrLn "starting"
     {-_ <- IntegralBased.test -}
 
-    let n = 4 
+    let n = 8 
         windowSize = V3 5 5 0.1 -- 5px * 5px * 100ms windows
         minSize    = 32          -- minimal number of elements in the window
 
