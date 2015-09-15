@@ -63,7 +63,10 @@ type PushVs a  = V.Vector (PushV a)
 -- | this is done by a gradient descent over the error
 -- | function below
 gradientDescentToFindAs :: Patch Double -> Phis Double -> As Double -> S.Vector Double
-gradientDescentToFindAs patch phis randomAs = fst $ minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) (\v -> asError patch phis (V.convert v)) (V.convert randomAs)
+gradientDescentToFindAs patch phis randomAs = fst $ gradientDescentToFindAs' patch phis randomAs
+
+gradientDescentToFindAs' :: Patch Double -> Phis Double -> As Double -> (S.Vector Double, LA.Matrix Double)
+gradientDescentToFindAs' patch phis randomAs = minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) (\v -> asError patch phis (V.convert v)) (V.convert randomAs)
 
 -- | distance between several spike trains
 asError :: Patch Double -> Phis Double -> As Double -> Double
@@ -171,10 +174,10 @@ realIntegral' vs (V3 lx ly lz) (V3 hx hy hz) = indefIntegral hx hy hz
 -- | this function calculates the integral of several
 -- | gauss bells from -∞ to ∞
 errorIntegral :: S.Vector (V4 Double) -> Double
-errorIntegral vs = pi**(3/2) * (fstSum + sndSum)
+errorIntegral vs = pi**(3/2) * fstSum + 2*pi**(3/2) * sndSum
   where fstSum = S.foldl' (\acc (V4 a _ _ _) -> acc + a^2) 0 vs
-        sndSum = 2 * mapSumPairs go vs
-        go (V4 aa ba ca da) (V4 ab bb cb db) = aa * ab * exp ( -0.25 * ( (ba-bb)^2 + (ca-cb)^2 + (da-db)^2  ) )
+        sndSum = mapSumPairs go vs
+        go (V4 a1 b1 c1 d1) (V4 a2 b2 c2 d2) = a1 * a2 * exp ( -0.25 * ( (b1-b2)^2 + (c1-c2)^2 + (d1-d2)^2  ) )
 
 -- | combine every element of the vector with every other element,
 -- | run a function on the pairings, then sum up the results
