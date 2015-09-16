@@ -100,7 +100,8 @@ antiGravForce a b = if nearZero dir then 0 else fdir
 
 oneIteration :: Patches Double -> Phis Double -> Phis Double
 oneIteration patches phis = fst $ updatePhisForPatches 5 patches phis fittedAs
-    where fittedAs = V.map (\patch -> oneIterationPatch patch phis) patches
+    where fittedAs = withStrategy (parTraversable rdeepseq)
+                   $ V.map (\patch -> oneIterationPatch patch phis) patches
 
 oneIterationPatch :: Patch Double -> Phis Double -> As Double
 oneIterationPatch patch phis = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
