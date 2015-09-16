@@ -11,21 +11,21 @@ import           VanRossumError
 import           Types
 import           Linear
 
-updatePhisForPatches :: Int -> Patches Double -> Phis Double -> V.Vector (As Double)
-                     -> (Phis Double, LA.Matrix Double)
-updatePhisForPatches iterations patches phis fittedAs = (unflattenV numPhis result, mat)
-  where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenV phis)
-        precision  = 1e-6 -- TODO decide on parameters for this
-        {-iterations = 100  -- just do one step in the right direction-}
-        searchBox  = S.replicate ((V.sum $ V.map S.length phis)*3) 1 -- whatever
-        numPhis    = V.length phis
-        errorFun :: S.Vector Double -> Double
-        errorFun vs = V.sum $ V.zipWith (\patch as -> reconstructionError patch (unflattenV numPhis vs) as) patches fittedAs
+{-updatePhisForPatches :: Int -> Patches Double -> Phis Double -> V.Vector (As Double)-}
+{-                     -> (Phis Double, LA.Matrix Double)-}
+{-updatePhisForPatches iterations patches phis fittedAs = (unflattenV numPhis result, mat)-}
+{-  where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenV phis)-}
+{-        precision  = 1e-6 -- TODO decide on parameters for this-}
+{-        [>iterations = 100  -- just do one step in the right direction<]-}
+{-        searchBox  = S.replicate ((V.sum $ V.map S.length phis)*3) 0.1 -- whatever-}
+{-        numPhis    = V.length phis-}
+{-        errorFun :: S.Vector Double -> Double-}
+{-        errorFun vs = V.sum $ V.zipWith (\patch as -> reconstructionError patch (unflattenV numPhis vs) as) patches fittedAs-}
 
 updatePhis :: Int -> Patch Double -> Phis Double -> As Double -> (Phis Double, LA.Matrix Double)
 updatePhis iterations patch phis fittedAs = (unflattenV numPhis result, mat)
   where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenV phis)
-        precision  = 1e-6 -- TODO decide on parameters for this
+        precision  = 1e-2 -- TODO decide on parameters for this
         {-iterations = 100  -- just do one step in the right direction-}
         searchBox  = S.replicate ((V.sum $ V.map S.length phis)*3) 1 -- whatever
         numPhis    = V.length phis

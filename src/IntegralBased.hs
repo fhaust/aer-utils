@@ -85,26 +85,29 @@ findClosestPatchSpike patch v = unsafePackV3 $ fst $ findClosestPatchSpike' patc
 
 --------------------------------------------------
 
-applyAntiGravity :: (Epsilon a, Floating a, S.Storable a) => Phis a -> Phis a
-applyAntiGravity phis = V.map (S.map (\e -> e + go e)) phis
-  where go a = V.foldl' (\acc p -> acc + S.foldl' (\acc2 b -> acc2 + antiGravForce a b) 0 p) 0 phis
+{-applyAntiGravity :: (Epsilon a, Floating a, S.Storable a) => Phis a -> Phis a-}
+{-applyAntiGravity phis = V.map (S.map (\e -> e + go e)) phis-}
+{-  where go a = V.foldl' (\acc p -> acc + S.foldl' (\acc2 b -> acc2 + antiGravForce a b) 0 p) 0 phis-}
   
-antiGravForce a b = if nearZero dir then 0 else fdir
-    where dir  = a - b
-          ndir = normalize dir
-          fdir = (0.001 / norm dir) *^ ndir
+{-antiGravForce a b = if nearZero dir then 0 else fdir-}
+{-    where dir  = a - b-}
+{-          ndir = normalize dir-}
+{-          fdir = (0.001 / norm dir) *^ ndir-}
 
 
 --------------------------------------------------
 
 
-oneIteration :: Patches Double -> Phis Double -> Phis Double
-oneIteration patches phis = fst $ updatePhisForPatches 5 patches phis fittedAs
-    where fittedAs = withStrategy (parTraversable rdeepseq)
-                   $ V.map (\patch -> oneIterationPatch patch phis) patches
+oneIteration :: Int -> Patches Double -> Phis Double -> Phis Double
+oneIteration n patches phis = V.map (S.map (*numPatches))
+                            $ V.foldl1' (V.zipWith (S.zipWith (+))) fittedPhis
+    where fittedPhis = withStrategy (parTraversable rdeepseq)
+                     $ V.map (\patch -> oneIterationPatch n patch phis) patches
+          numPatches = 1 / (fromIntegral $ V.length patches)
 
-oneIterationPatch :: Patch Double -> Phis Double -> As Double
-oneIterationPatch patch phis = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
+oneIterationPatch :: Int -> Patch Double -> Phis Double -> Phis Double
+oneIterationPatch n patch phis = fst $ updatePhis n patch phis fittedAs
+    where fittedAs = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
 
 
 
@@ -119,34 +122,34 @@ testData = do
 
     return (patches,phis)
 
-test = do
+{-test = do-}
 
-    (patches,phis) <- testData
-
-
-    let phis' = iterate (oneIteration (patches)) phis
+{-    (patches,phis) <- testData-}
 
 
-
-    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
-    let dn = "data/integration_based_" ++ t ++ "/" 
-    createDirectoryIfMissing True dn
-
-    savePatches (dn ++ "patches.bin") patches
-
-
-    forM_ (zip [0::Int ..] phis') $ \ (i,phi) -> do
-      putStr $ "running iteration " ++ show i ++ " ... "
-      tStart <- getCurrentTime
-      encodeFile (dn ++ printf "phis_%05d.bin" i) (V.toList . V.map S.toList $ phi)
-      tEnd <- getCurrentTime
-
-      putStrLn $ "took " ++ show (tEnd .-. tStart)
+{-    let phis' = iterate (oneIteration (patches)) phis-}
 
 
 
+{-    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime-}
+{-    let dn = "data/integration_based_" ++ t ++ "/" -}
+{-    createDirectoryIfMissing True dn-}
 
-    return (patches,phis,phis')
+{-    savePatches (dn ++ "patches.bin") patches-}
+
+
+{-    forM_ (zip [0::Int ..] phis') $ \ (i,phi) -> do-}
+{-      putStr $ "running iteration " ++ show i ++ " ... "-}
+{-      tStart <- getCurrentTime-}
+{-      encodeFile (dn ++ printf "phis_%05d.bin" i) (V.toList . V.map S.toList $ phi)-}
+{-      tEnd <- getCurrentTime-}
+
+{-      putStrLn $ "took " ++ show (tEnd .-. tStart)-}
+
+
+
+
+{-    return (patches,phis,phis')-}
 
 savePatches :: FilePath -> Patches Double -> IO ()
 savePatches fn patches = encodeFile fn (V.toList . V.map S.toList $ patches)
