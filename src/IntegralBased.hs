@@ -43,6 +43,7 @@ import           Numeric.FastMath
 import           GHC.Conc (numCapabilities)
 
 import           OlshausenOnStreams.Plotting
+import           VanRossumError
 
 type Event a  = V3 a
 type Events a = S.Vector (Event a)
@@ -132,116 +133,6 @@ oneIterationPatch :: Patch Double -> Phis Double -> PushVs Double
 oneIterationPatch patch phis = pushVectors patch phis (V.convert fittedAs)
     where -- find best as
           fittedAs = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
-
-
-gauss :: V4 Double -> Double
-gauss (V4 a b c d) = a * exp( -0.5 * (b**2+c**2+d**2) )
-errFun :: S.Vector (V4 Double) -> V3 Double -> Double
-errFun gs (V3 x y z) = S.sum $ S.map (\(V4 a b c d) -> gauss (V4 a (x-b) (y-c) (z-d))) gs
-squaredErrFun :: S.Vector (V4 Double) -> V3 Double -> Double
-squaredErrFun gs v = (errFun gs v)**2
-
--- | numeric integration, mostly for comparison
-intFun :: S.Vector (V4 Double) -> (Double,Double)
-intFun gs = integrateQAGI 1e-6 500 (\z -> fst $ integrateQAGI 1e-6 500 (\y -> fst $ integrateQAGI 1e-6 500 (\x -> squaredErrFun gs (V3 x y z)) ))
-
-{-realIntegral :: [V4 Double] -> Double-}
-{-realIntegral vs = (2*pi)**(3/2) * sum [ a**2 | (V4 a _ _ _) <- vs ]-}
-{-                +  2*pi**(3/2)  * sum [ sum [ ai * aj * g (bi-bj) (ci-cj) (di-dj) | (V4 aj bj cj dj) <- is] | ((V4 ai bi ci di):is) <- tails vs ]-}
-{-    where g a b c = exp ( -0.25 * (a**2+b**2+c**2))-}
-
-realIntegral' :: S.Vector (V4 Double) -> V3 Double -> V3 Double -> Double
-realIntegral' vs (V3 lx ly lz) (V3 hx hy hz) = indefIntegral hx hy hz
-                                             - indefIntegral hx hy lz
-                                             - indefIntegral hx ly hz
-                                             + indefIntegral hx ly lz
-                                             - indefIntegral lx hy hz
-                                             + indefIntegral lx hy lz
-                                             + indefIntegral lx ly hz
-                                             - indefIntegral lx ly lz
-    where indefIntegral x y z = realIntegral vs (V3 x y z)
-
-{-realIntegralJack :: S.Vector (V4 Double) -> Double-}
-{-realIntegralJack vs = coeff * fstSum * sndSum-}
-{-    where coeff = (2*pi)**(3/2)-}
-{-          fstSum = S.sum $ S.map (\(V4 a _ _ _) -> a*a + 2 * pi**(3/2)) vs-}
-{-          sndSum = V.sum $ V.map go (tailsS' vs)-}
-{-            where go vs' | S.length vs' < 1 = 0-}
-{-                         | otherwise        = S.sum $ S.map (go' (S.head vs')) vs'-}
-{-                            where go' (V4 ai bi ci di) (V4 aj bj cj dj) = ai * aj * g (bi-bj) (ci-cj) (di-dj)-}
-{-                                  g x y z = exp (-0.25 * (x*x+y*y+z*z))-}
-
--- | this function calculates the integral of several
--- | gauss bells from -∞ to ∞
-errorIntegral :: S.Vector (V4 Double) -> Double
-errorIntegral vs = pi**(3/2) * fstSum + 2*pi**(3/2) * sndSum
-  where fstSum = S.foldl' (\acc (V4 a _ _ _) -> acc + a^2) 0 vs
-        sndSum = mapSumPairs go vs
-        go (V4 a1 b1 c1 d1) (V4 a2 b2 c2 d2) = a1 * a2 * exp ( -0.25 * ( (b1-b2)^2 + (c1-c2)^2 + (d1-d2)^2  ) )
-
--- | combine every element of the vector with every other element,
--- | run a function on the pairings, then sum up the results
--- | this is super ungeneric :)
-mapSumPairs ::
-  (Num a, S.Storable b) => (b -> b -> a) -> S.Vector b -> a
-mapSumPairs f = go
-  where go vs = S.foldl' (\acc v -> acc + f (S.head vs) v) 0 (S.tail vs)
-              + if S.length vs > 2 then go (S.tail vs) else 0
-{-# INLINABLE mapSumPairs #-}
-
-
-
-
--- | the integral as calculated by hand (and SAGE)
-realIntegralOld vs (V3 x y z) = foo + bar
-    where foo = 1/8*pi**(3/2) * sum [ a**2 * erf(x - b) * erf(y - c) * erf(z - d) | (V4 a b c d) <- vs ]
-          bar = 1/4*pi**(3/2) * sum [ sum [ aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2) * exp( - 1/4*(bi-bj)**2 - 1/4*(ci-cj)**2  - 1/4*(di-dj)**2) | (V4 aj bj cj dj) <- is ] | ((V4 ai bi ci di):is) <- tails vs ]
-
--- | the integral "optimized"
-realIntegral :: S.Vector (V4 Double) -> V3 Double -> Double
-realIntegral vs (V3 x y z) = foo
-    where foo = 1/8*pi**(3/2) * (V.sum . parM . V.map innerGo $ tailsS' vs )
-
-          fooInner (V4 a b c d) = a**2 * erf(x - b) * erf(y - c) * erf(z - d)
-          barInner (V4 ai bi ci di) (V4 aj bj cj dj)
-             = aj*ai * erf(x - (bj+bi)/2) * erf(y - (cj+ci)/2) * erf(z - (dj+di)/2)
-             * exp( - 1/4 * ((bi-bj)**2 + (ci-cj)**2 + (di-dj)) )
-          parM = withStrategy (parTraversable rdeepseq)
-          innerGo vs | S.null vs = 0
-                     | otherwise = fooInner (S.head vs) + 2 * S.sum (S.map (\vj -> barInner (S.head vs) vj) (S.tail vs)) 
-
-
-{-# INLINE realIntegral #-}
-
-withOptStrat ls | length ls < numCapabilities = ls
-                | otherwise = withStrategy (parListChunk (length ls `div` numCapabilities) rdeepseq) ls
-
--- FIXME this is probably not really efficient
-tailsS :: S.Storable a => S.Vector a -> V.Vector (S.Vector a)
-tailsS v = V.map S.fromList . V.fromListN (lv+1) . tails . S.toList $ v
-  where lv = S.length v
-
-tailsS' :: S.Storable a => S.Vector a -> V.Vector (S.Vector a)
-tailsS' v = V.unfoldrN (S.length v) go v
-  where go v' | S.null v' = Nothing
-              | otherwise = Just (v',S.tail v')
-
--- derivates of the error function
-
-realDerivateX vs (V3 x y z) = -2 * foo * bar
-  where foo = sum [ a * (x - b) * gauss (V4 a (x-b) (y-c) (z-d))  | (V4 a b c d) <- vs ]
-        bar = sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- vs ]
-  
-realDerivateY vs (V3 x y z) = -2 * foo * bar
-  where foo = sum [ a * (y - c) * gauss (V4 a (x-b) (y-c) (z-d))  | (V4 a b c d) <- vs ]
-        bar = sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- vs ]
-
-realDerivateZ vs (V3 x y z) = -2 * foo * bar
-  where foo = sum [ a * (z - d) * gauss (V4 a (x-b) (y-c) (z-d))  | (V4 a b c d) <- vs ]
-        bar = sum [ gauss (V4 a (x-b) (y-c) (z-d)) | (V4 a b c d) <- vs ]
-
-realDerivates vs v = V3 (realDerivateX vs v) (realDerivateY vs v) (realDerivateZ vs v)
-
 
 
 
