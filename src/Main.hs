@@ -7,6 +7,7 @@
 module Main where
 
 import           IntegralBased
+import           Types
 import           Linear
 
 import           System.Directory

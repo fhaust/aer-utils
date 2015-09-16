@@ -44,20 +44,8 @@ import           GHC.Conc (numCapabilities)
 
 import           OlshausenOnStreams.Plotting
 import           VanRossumError
-
-type Event a  = V3 a
-type Events a = S.Vector (Event a)
-
-type Patch a = Events a
-type Phi a   = Events a
-type PushV a = Events a
-
-type As a    = S.Vector a
-
-type Patches a = V.Vector (Patch a)
-type Phis a    = V.Vector (Phi a)
-type PushVs a  = V.Vector (PushV a)
-
+import           PhiUpdates
+import           Types
 
 -- | this function calculates a set of coefficients that
 -- | scales the given phis to match the given patch best
@@ -67,11 +55,13 @@ gradientDescentToFindAs :: Patch Double -> Phis Double -> As Double -> S.Vector 
 gradientDescentToFindAs patch phis randomAs = fst $ gradientDescentToFindAs' patch phis randomAs
 
 gradientDescentToFindAs' :: Patch Double -> Phis Double -> As Double -> (S.Vector Double, LA.Matrix Double)
-gradientDescentToFindAs' patch phis randomAs = minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) (\v -> asError patch phis (V.convert v)) (V.convert randomAs)
+gradientDescentToFindAs' patch phis randomAs = 
+    minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) errorFun (V.convert randomAs)
+    where errorFun v = IntegralBased.reconstructionError patch phis (V.convert v)
 
 -- | distance between several spike trains
-asError :: Patch Double -> Phis Double -> As Double -> Double
-asError patch phis as = errorIntegral (phis' S.++ patches')
+reconstructionError :: Patch Double -> Phis Double -> As Double -> Double
+reconstructionError patch phis as = VanRossumError.errorIntegral (phis' S.++ patches')
     where phis'    = V.foldl' (S.++) S.empty  $ V.zipWith (\a phi -> addAsS a phi) (V.convert as) phis
           patches' = addAsS (-1) patch
 
@@ -109,30 +99,11 @@ antiGravForce a b = if nearZero dir then 0 else fdir
 
 
 oneIteration :: Patches Double -> Phis Double -> Phis Double
-oneIteration patches phis = V.zipWith (S.zipWith (+)) phis pushVs
+oneIteration patches phis = fst $ updatePhisForPatches 5 patches phis fittedAs
+    where fittedAs = V.map (\patch -> oneIterationPatch patch phis) patches
 
-    where pushVs = -- applyAntiGravity
-                   collapsePushVectors
-                 . withStrategy (parTraversable rdeepseq)
-                 . V.map (\patch -> oneIterationPatch patch phis) 
-                 $ patches
-
-{-pushVector :: (Epsilon a, Floating a) => (V3 a -> V3 a) -> Phi a -> a -> V.Vector (V3 a)-}
-{-pushVector dPatch phi fittedA = V.map (\e -> fittedA *^ normalize (dPatch e)) phi-}
-
-pushVectors :: Patch Double -> Phis Double -> As Double  -> PushVs Double
-pushVectors patch phis as = V.zipWith (\a -> S.map (\e -> (a*eta) *^ (findSpike e - e))) (V.convert as) phis
-    where findSpike = findClosestPatchSpike patch
-          eta       = 0.01
-
-collapsePushVectors :: V.Vector (PushVs Double) -> PushVs Double
-collapsePushVectors vs = V.foldl1' (V.zipWith (S.zipWith (\a b -> a + (b/n)))) vs
-    where n = fromIntegral $ length vs
-
-oneIterationPatch :: Patch Double -> Phis Double -> PushVs Double
-oneIterationPatch patch phis = pushVectors patch phis (V.convert fittedAs)
-    where -- find best as
-          fittedAs = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
+oneIterationPatch :: Patch Double -> Phis Double -> As Double
+oneIterationPatch patch phis = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
 
 
 
