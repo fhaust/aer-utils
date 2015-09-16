@@ -77,7 +77,7 @@ main = do
 
       -- run iteration
       phis <- readIORef phisPtr
-      let phis' = oneIteration patches phis
+      let phis' = oneIteration 1000 patches phis
       writeIORef phisPtr phis'
 
       -- write out everything
