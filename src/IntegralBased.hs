@@ -59,40 +59,6 @@ gradientDescentToFindAs' patch phis randomAs =
     minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) errorFun (V.convert randomAs)
     where errorFun v = IntegralBased.reconstructionError patch phis (V.convert v)
 
--- | distance between several spike trains
-reconstructionError :: Patch Double -> Phis Double -> As Double -> Double
-reconstructionError patch phis as = VanRossumError.errorIntegral (phis' S.++ patches')
-    where phis'    = V.foldl' (S.++) S.empty  $ V.zipWith (\a phi -> addAsS a phi) (V.convert as) phis
-          patches' = addAsS (-1) patch
-
--- | find closest spike in the gradient field spanned by the patches
-findClosestPatchSpike' :: Patch Double -> S.Vector Double -> (LA.Vector Double, LA.Matrix Double)
-findClosestPatchSpike' patch v = minimizeV NMSimplex2 1e-6 1000 (S.replicate 3 1) go v
-    where go = errFun ps . unsafePackV3
-          ps = addAsS (-1) $ patch
-
-findClosestPatchSpike :: Patch Double -> V3 Double -> V3 Double
-findClosestPatchSpike patch v = unsafePackV3 $ fst $ findClosestPatchSpike' patch $ unpackV3 v
-
-
--- | TODO maybe fix this
--- findClosestPatchSpikeD :: Patches Double -> V3 Double -> (S.Vector Double, LA.Matrix Double)
--- findClosestPatchSpikeD patches v = minimizeVD VectorBFGS2 1e-6 1000 1 0.1 goE goD (unpackV3 v)
---     where goE = errFun ps . unsafePackV3
---           goD = unpackV3 . realDerivates ps . unsafePackV3
---           ps = V.toList $ addAs (-1) $ mergeSpikes patches
-
-
---------------------------------------------------
-
-{-applyAntiGravity :: (Epsilon a, Floating a, S.Storable a) => Phis a -> Phis a-}
-{-applyAntiGravity phis = V.map (S.map (\e -> e + go e)) phis-}
-{-  where go a = V.foldl' (\acc p -> acc + S.foldl' (\acc2 b -> acc2 + antiGravForce a b) 0 p) 0 phis-}
-  
-{-antiGravForce a b = if nearZero dir then 0 else fdir-}
-{-    where dir  = a - b-}
-{-          ndir = normalize dir-}
-{-          fdir = (0.001 / norm dir) *^ ndir-}
 
 
 --------------------------------------------------
