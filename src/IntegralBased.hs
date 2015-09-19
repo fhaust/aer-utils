@@ -65,20 +65,36 @@ gradientDescentToFindAs' patch phis randomAs =
 --------------------------------------------------
 
 
-oneIteration :: Int -> Patches Double -> Phis Double -> Phis Double
-oneIteration n patches phis = meanPhis
-    where fittedPhis = withStrategy (parTraversable rdeepseq)
+{-oneIteration :: Int -> Patches Double -> Phis Double -> Phis Double-}
+oneIteration n patches phis = (meanPhis,errorInits,errorAs,errorPhis)
+    where (fittedPhis,errorInits,errorAs,errorPhis) = V.unzip4 
+                     $ withStrategy (parTraversable rdeepseq)
                      $ V.map (\patch -> oneIterationPatch n patch phis) patches
           numPatches = 1 / (fromIntegral $ V.length patches)
           meanPhis   = V.map (S.map (*numPatches))
                      $ V.foldl1' (V.zipWith (S.zipWith (+))) fittedPhis
 
 
-oneIterationPatch :: Int -> Patch Double -> Phis Double -> Phis Double
-oneIterationPatch n patch phis = trace (printf "reconstruction error: %f" error) fittedPhis
-    where fittedAs = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
+
+
+oneIterationPatch ::
+  Int
+  -> Patch Double
+  -> Phis Double
+  -> (Phis Double, Double, Double, Double)
+oneIterationPatch n patch phis = (scaledPhis, errorInit, errorAs, errorPhis)
+    where initialAs = S.replicate (V.length phis) 1
+
+          fittedAs = gradientDescentToFindAs patch phis initialAs
           fittedPhis = fst $ updatePhis n patch phis fittedAs
-          error = reconstructionError patch fittedPhis fittedAs
+
+          scaledPhis = V.zipWith3 (\a -> S.zipWith (\e e' -> e + (a *^ (e' - e)))) (V.convert fittedAs) phis fittedPhis 
+
+          errorInit = reconstructionError patch phis initialAs
+          errorAs   = reconstructionError patch phis fittedAs
+          errorPhis = reconstructionError patch fittedPhis fittedAs
+
+          {-msg = printf "errors -> pre: %f, as: %f, phis: %f" errorInit errorAs errorPhis-}
 
 
 

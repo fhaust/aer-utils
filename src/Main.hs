@@ -57,8 +57,9 @@ main = do
 
 
     -- create directory to store output
-    t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime
-    let dn = "data/integration_based_" ++ t ++ "/" 
+    {-t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime-}
+    {-let dn = "data/integration_based_" ++ t ++ "/" -}
+    let dn = "data/testing/"
     createDirectoryIfMissing True dn
 
     putStrLn "loaded dataset, now crunching"
@@ -77,29 +78,56 @@ main = do
 
       -- run iteration
       phis <- readIORef phisPtr
-      let phis' = oneIteration 1000 patches phis
+      let (phis',errorInit,errorA,errorPhi) = oneIteration 1000 patches phis
       writeIORef phisPtr phis'
 
       -- write out everything
-      savePatches (printf "%spatches%05d.bin" dn i) patches
-      savePhis    (printf "%sphis%05d.bin" dn i) phis'
+      {-savePatches (printf "%spatches%05d.bin" dn i) patches-}
+      {-savePhis    (printf "%sphis%05d.bin" dn i) phis'-}
+      writeIteration dn i patches phis' errorInit errorA errorPhi
 
-      -- display results
-      oldTid <- readIORef guiPtr
-      case oldTid of
-        (Just tid) -> killThread tid
-        Nothing    -> return ()
-      tid <- multiplotEventsAsyncS phis
-      writeIORef guiPtr (Just tid)
+      {--- display results-}
+      {-oldTid <- readIORef guiPtr-}
+      {-case oldTid of-}
+      {-  (Just tid) -> killThread tid-}
+      {-  Nothing    -> return ()-}
+      {-tid <- multiplotEventsAsyncS phis-}
+      {-writeIORef guiPtr (Just tid)-}
 
-      -- write out image
-      _ <- multiplotFileS (printf "%sit-%05d.png" dn i) phis'
+      {--- write out image-}
+      {-_ <- multiplotFileS (printf "%sit-%05d.png" dn i) phis'-}
 
       eTime <- getCurrentTime
       putStrLn $ "time taken: " ++ show (eTime .-. sTime)
 
 
     putStrLn "done"
+
+
+
+writeIteration dn i patches phis' errorInit errorAs errorPhis = do
+    savePatches (printf "%spatches%05d.bin" dn i) patches
+    savePhis    (printf "%sphis%05d.bin" dn i) phis'
+    _ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'
+  
+    -- process errors
+    let (il,ih,is) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorInit
+    let (al,ah,as) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorAs
+    let (pl,ph,ps) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorPhis
+        im         = is / (fromIntegral $ V.length errorInit)
+        am         = as / (fromIntegral $ V.length errorAs)
+        pm         = ps / (fromIntegral $ V.length errorPhis)
+
+    appendFile (printf "%serrors.csv" dn) (printf "%d %f %f %f %f %f %f %f %f %f\n" i im il ih am al ah pm pl ph)
+    
+
+readIteration dn i = do
+    patches <- loadPatches (printf "%spatches%05d.bin" dn i)
+    phis    <- loadPhis    (printf "%sphis%05d.bin" dn i)
+    (errorInit, errorAs, errorPhis) <- read <$> readFile (printf "%serrors%05d.bin" dn i)
+    return (patches, phis, errorInit, errorAs, errorPhis)
+
+
 
 
 normalizePatches :: Patches Double -> Patches Double
