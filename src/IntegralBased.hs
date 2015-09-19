@@ -24,7 +24,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Storable as S
 import qualified Data.Vector.Generic as G
 {-import qualified Data.Vector.Unboxed as U-}
-import           Linear
+import           Linear hiding (trace)
 
 
 import           Control.Monad
@@ -46,6 +46,7 @@ import           OlshausenOnStreams.Plotting
 import           VanRossumError
 import           PhiUpdates
 import           Types
+import           Common
 
 -- | this function calculates a set of coefficients that
 -- | scales the given phis to match the given patch best
@@ -57,7 +58,7 @@ gradientDescentToFindAs patch phis randomAs = fst $ gradientDescentToFindAs' pat
 gradientDescentToFindAs' :: Patch Double -> Phis Double -> As Double -> (S.Vector Double, LA.Matrix Double)
 gradientDescentToFindAs' patch phis randomAs = 
     minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) errorFun (V.convert randomAs)
-    where errorFun v = IntegralBased.reconstructionError patch phis (V.convert v)
+    where errorFun v = reconstructionError patch phis (V.convert v)
 
 
 
@@ -65,15 +66,19 @@ gradientDescentToFindAs' patch phis randomAs =
 
 
 oneIteration :: Int -> Patches Double -> Phis Double -> Phis Double
-oneIteration n patches phis = V.map (S.map (*numPatches))
-                            $ V.foldl1' (V.zipWith (S.zipWith (+))) fittedPhis
+oneIteration n patches phis = meanPhis
     where fittedPhis = withStrategy (parTraversable rdeepseq)
                      $ V.map (\patch -> oneIterationPatch n patch phis) patches
           numPatches = 1 / (fromIntegral $ V.length patches)
+          meanPhis   = V.map (S.map (*numPatches))
+                     $ V.foldl1' (V.zipWith (S.zipWith (+))) fittedPhis
+
 
 oneIterationPatch :: Int -> Patch Double -> Phis Double -> Phis Double
-oneIterationPatch n patch phis = fst $ updatePhis n patch phis fittedAs
+oneIterationPatch n patch phis = trace (printf "reconstruction error: %f" error) fittedPhis
     where fittedAs = gradientDescentToFindAs (V.convert patch) phis (S.replicate (V.length phis) 1)
+          fittedPhis = fst $ updatePhis n patch phis fittedAs
+          error = reconstructionError patch fittedPhis fittedAs
 
 
 

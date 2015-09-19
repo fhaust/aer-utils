@@ -10,6 +10,7 @@ import qualified Data.Vector as V
 import           VanRossumError
 import           Types
 import           Linear
+import           Common
 
 {-updatePhisForPatches :: Int -> Patches Double -> Phis Double -> V.Vector (As Double)-}
 {-                     -> (Phis Double, LA.Matrix Double)-}
@@ -50,8 +51,3 @@ unflattenV n vs | rem /= 0  = error $ "invalid size for unflattening, n = " ++ s
 
 
 
--- | reconstruction error
-reconstructionError :: Patch Double -> Phis Double -> As Double -> Double
-reconstructionError patch phis as = errorIntegral (phis' S.++ patches')
-  where phis'    = V.foldl' (S.++) S.empty $ V.zipWith (\a -> S.map (\(V3 x y z) -> V4 a x y z)) (V.convert as) phis
-        patches' = S.map (\(V3 x y z) -> V4 (-1) x y z) patch
