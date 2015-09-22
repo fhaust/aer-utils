@@ -94,6 +94,8 @@ runTest iterations patches initialPhis = do
 planeS o n num = S.fromList <$> plane o n num
 randomPlaneS num = S.fromList <$> randomPlane num
 
+iterations = 1500
+
 testPatch1 numPhi = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 32
@@ -103,7 +105,7 @@ testPatch1 numPhi = do
 
     patches <- V.replicateM 1 $ planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
 
-    runTest 500 patches initialPhis
+    runTest iterations patches initialPhis
 
 testPatch2 numPhi = do
 
@@ -113,10 +115,10 @@ testPatch2 numPhi = do
                                                <*> getRandomR (0,5)) :: IO (Phis Double)
 
     patches <- V.sequence $ V.fromList [planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
-                                       ,planeS (V3 2.5 2.5 2.5) (V3 0 1 0) 64
+                                       ,planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 64
                                        ]
 
-    runTest 500 patches initialPhis
+    runTest iterations patches initialPhis
 
 
 testPatchR numPatch numPhi = do
@@ -128,7 +130,7 @@ testPatchR numPatch numPhi = do
 
     patches <- V.replicateM numPatch $ randomPlaneS 64
 
-    runTest 500 patches initialPhis
+    runTest iterations patches initialPhis
 
 
 

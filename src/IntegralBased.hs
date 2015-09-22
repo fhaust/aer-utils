@@ -91,7 +91,7 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
           -- **8 is there to "convince" the phi to go in the direction of
           -- one patch
           maxA       = V.maximum . V.map S.maximum $ fittedAs
-          scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**8)) fittedAs
+          scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**16)) fittedAs
 
           -- scale phis according to scaled as and learning rate
           eta        = 0.1
