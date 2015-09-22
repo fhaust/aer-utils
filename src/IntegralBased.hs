@@ -66,33 +66,72 @@ gradientDescentToFindAs' patch phis randomAs =
 
 
 {-oneIteration :: Int -> Patches Double -> Phis Double -> Phis Double-}
-oneIteration n patches phis = (meanPhis,errorInits,errorAs,errorPhis)
-    where (fittedPhis,errorInits,errorAs,errorPhis) = V.unzip4 
+oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
+    where 
+          --(scaledPhis,errorInits,errorAs,errorPhis) = V.unzip4 
+          --           $ withStrategy (parTraversable rdeepseq)
+          --           $ V.map (\patch -> oneIterationPatch patch phis) patches
+          --numPatches = fromIntegral $ V.length patches
+          --meanPhis   = V.map (S.map (\e -> e ^/ numPatches))
+          --           . V.foldl1' (V.zipWith (S.zipWith (+))) 
+          --           $ scaledPhis
+
+          -- fitting the as (one a per phi per patch)
+          initialAs  = V.replicate (V.length patches) $ S.replicate (V.length phis) 1
+          fittedAs   = traceShowId 
                      $ withStrategy (parTraversable rdeepseq)
-                     $ V.map (\patch -> oneIterationPatch n patch phis) patches
-          numPatches = 1 / (fromIntegral $ V.length patches)
-          meanPhis   = V.map (S.map (*numPatches))
-                     $ V.foldl1' (V.zipWith (S.zipWith (+))) fittedPhis
+                     $ V.zipWith (\as patch -> gradientDescentToFindAs patch phis as) initialAs patches
+
+
+          -- fit the phis
+          fittedPhis :: V.Vector (Phis Double)
+          fittedPhis = V.zipWith (\as patch -> updatePhis patch phis as) fittedAs patches
+
+          -- scale as so that the maximum is not more than one
+          -- **8 is there to "convince" the phi to go in the direction of
+          -- one patch
+          maxA       = V.maximum . V.map S.maximum $ fittedAs
+          scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**8)) fittedAs
+
+          -- scale phis according to scaled as and learning rate
+          eta        = 0.1
+          scaledPhis :: V.Vector (Phis Double)
+          scaledPhis = V.zipWith (\as phis' -> go (V.convert as) phis') scaledAs fittedPhis
+              where go as phis' 
+                     = V.zipWith3 (\a phi phi' -> S.zipWith (\e e' -> e + ((eta * a) *^ (e' - e))) phi phi') as phis phis'
+
+          numPatches = fromIntegral $ V.length patches
+          meanPhis   = V.map (S.map (\e -> e ^/ numPatches))
+                     . V.foldl1' (V.zipWith (S.zipWith (+))) 
+                     $ scaledPhis
+
+          errorInits = traceShowId $ V.zipWith (\patch as -> reconstructionError patch phis as) patches initialAs
+          errorAs    = traceShowId $ V.zipWith (\patch as -> reconstructionError patch phis as) patches fittedAs
+          errorPhis  = traceShowId $ V.zipWith (\patch as -> reconstructionError patch meanPhis as) patches scaledAs
 
 
 
 
 oneIterationPatch ::
-  Int
-  -> Patch Double
+  Patch Double
   -> Phis Double
   -> (Phis Double, Double, Double, Double)
-oneIterationPatch n patch phis = (scaledPhis, errorInit, errorAs, errorPhis)
+oneIterationPatch patch phis = (scaledPhis, errorInit, errorAs, errorPhis)
     where initialAs = S.replicate (V.length phis) 1
 
           fittedAs = gradientDescentToFindAs patch phis initialAs
-          fittedPhis = fst $ updatePhis n patch phis fittedAs
+          fittedPhis = updatePhis patch phis fittedAs
 
-          scaledPhis = V.zipWith3 (\a -> S.zipWith (\e e' -> e + (a *^ (e' - e)))) (V.convert fittedAs) phis fittedPhis 
+          {-clampedAs  = traceShowId $ S.map (\a -> min 1 (max 0 a)) fittedAs-}
+          clampedAs  = traceShowId $ S.map (\a -> a / 5) fittedAs
+          minA       = S.minimum fittedAs
+          maxA       = S.maximum fittedAs
+          scaledPhis = V.zipWith3 (\a -> S.zipWith (\e e' -> e + ((0.1 * a) *^ (e' - e)))) 
+                                  (V.convert clampedAs) phis fittedPhis 
 
-          errorInit = reconstructionError patch phis initialAs
-          errorAs   = reconstructionError patch phis fittedAs
-          errorPhis = reconstructionError patch fittedPhis fittedAs
+          errorInit = traceShowId $ reconstructionError patch phis initialAs
+          errorAs   = traceShowId $ reconstructionError patch phis fittedAs
+          errorPhis = traceShowId $ reconstructionError patch fittedPhis fittedAs
 
           {-msg = printf "errors -> pre: %f, as: %f, phis: %f" errorInit errorAs errorPhis-}
 

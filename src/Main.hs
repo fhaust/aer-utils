@@ -7,11 +7,13 @@
 module Main where
 
 import           IntegralBased
+import           ArtificialData
 import           Types
 import           Linear
 
 import           System.Directory
 import           System.Locale
+import           System.Environment
 
 import           Text.Printf
 
@@ -32,6 +34,7 @@ import           Control.Monad
 import           Control.Monad.Random
 import           Control.Lens
 import           Control.Concurrent
+import           Control.Concurrent.Async
 
 import           Debug.Trace
 
@@ -40,75 +43,102 @@ _t = _z
 main :: IO ()
 main = do
     putStrLn "starting"
-    {-_ <- IntegralBased.test -}
 
-    let n = 8 
-        windowSize = V3 5 5 0.1 -- 5px * 5px * 100ms windows
-        minSize    = 32          -- minimal number of elements in the window
+    t1 <- async $ testPatch1 1
+    t2 <- async $ testPatch1 2
+    t3 <- async $ testPatch2 1
+    t4 <- async $ testPatch2 2
+    t5 <- async $ testPatchR 3 1
+    t6 <- async $ testPatchR 3 2
+    t7 <- async $ testPatchR 3 3
 
-    -- load dataset
-    es <- convertToV3s <$> DVS.mmapDVSData "../aer/data/DVS128-citec-walk-fast.aedat"
-
-    -- create initial random phis
-    initialPhis  <- V.replicateM 2 $ S.replicateM 16 
-                                   $ (V3 <$> getRandomR (0,view _x windowSize)
-                                         <*> getRandomR (0,view _y windowSize)
-                                         <*> getRandomR (0,view _t windowSize)) :: IO (Phis Double)
-
-
-    -- create directory to store output
-    {-t <- formatTime defaultTimeLocale "%F_%T" <$> getCurrentTime-}
-    {-let dn = "data/integration_based_" ++ t ++ "/" -}
-    let dn = "data/testing/"
-    createDirectoryIfMissing True dn
-
-    putStrLn "loaded dataset, now crunching"
-
-    -- run interations
-    phisPtr <- newIORef initialPhis
-    guiPtr  <- newIORef Nothing
-    forM_ ([0..]::[Int]) $ \i -> do
-
-      putStrLn $ "-- iteration " ++ show i ++ " --"
-      sTime <- getCurrentTime 
-      putStrLn $ "starttime: " ++ show sTime
-
-      -- select random patches
-      patches <- normalizePatches <$> selectPatches minSize windowSize n es
-
-      -- run iteration
-      phis <- readIORef phisPtr
-      let (phis',errorInit,errorA,errorPhi) = oneIteration 1000 patches phis
-      writeIORef phisPtr phis'
-
-      -- write out everything
-      {-savePatches (printf "%spatches%05d.bin" dn i) patches-}
-      {-savePhis    (printf "%sphis%05d.bin" dn i) phis'-}
-      writeIteration dn i patches phis' errorInit errorA errorPhi
-
-      {--- display results-}
-      {-oldTid <- readIORef guiPtr-}
-      {-case oldTid of-}
-      {-  (Just tid) -> killThread tid-}
-      {-  Nothing    -> return ()-}
-      {-tid <- multiplotEventsAsyncS phis-}
-      {-writeIORef guiPtr (Just tid)-}
-
-      {--- write out image-}
-      {-_ <- multiplotFileS (printf "%sit-%05d.png" dn i) phis'-}
-
-      eTime <- getCurrentTime
-      putStrLn $ "time taken: " ++ show (eTime .-. sTime)
-
+    wait t1
+    wait t2
+    wait t3
+    wait t4
+    wait t5
+    wait t6
+    wait t7
 
     putStrLn "done"
 
 
 
-writeIteration dn i patches phis' errorInit errorAs errorPhis = do
+runTest iterations patches initialPhis = do
+
+    -- create directory to store output
+    let dn = printf "data/test-patch-%d-phi-%d/" (V.length patches) (V.length initialPhis)
+    createDirectoryIfMissing True dn
+    writeFile (dn ++ "errors.csv") ""
+
+    -- run interations
+    phisPtr <- newIORef initialPhis
+    forM_ ([0..iterations]::[Int]) $ \i -> do
+
+      putStrLn $ "-- iteration " ++ show i ++ " --"
+      sTime <- getCurrentTime 
+      putStrLn $ "starttime: " ++ show sTime
+
+      -- run iteration
+      phis <- readIORef phisPtr
+      let (phis',errorInit,errorA,errorPhi) = oneIteration patches phis
+      writeIORef phisPtr phis'
+
+      -- write out everything
+      writeIteration dn i patches phis phis' errorInit errorA errorPhi
+
+
+      eTime <- getCurrentTime
+      putStrLn $ "time taken: " ++ show (eTime .-. sTime)
+
+planeS o n num = S.fromList <$> plane o n num
+randomPlaneS num = S.fromList <$> randomPlane num
+
+testPatch1 numPhi = do
+
+    initialPhis  <- V.replicateM numPhi $ S.replicateM 32
+                                         $ (V3 <$> getRandomR (0,5)
+                                               <*> getRandomR (0,5)
+                                               <*> getRandomR (0,5)) :: IO (Phis Double)
+
+    patches <- V.replicateM 1 $ planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
+
+    runTest 500 patches initialPhis
+
+testPatch2 numPhi = do
+
+    initialPhis  <- V.replicateM numPhi $ S.replicateM 32
+                                         $ (V3 <$> getRandomR (0,5)
+                                               <*> getRandomR (0,5)
+                                               <*> getRandomR (0,5)) :: IO (Phis Double)
+
+    patches <- V.sequence $ V.fromList [planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
+                                       ,planeS (V3 2.5 2.5 2.5) (V3 0 1 0) 64
+                                       ]
+
+    runTest 500 patches initialPhis
+
+
+testPatchR numPatch numPhi = do
+
+    initialPhis  <- V.replicateM numPhi $ S.replicateM 32
+                                         $ (V3 <$> getRandomR (0,5)
+                                               <*> getRandomR (0,5)
+                                               <*> getRandomR (0,5)) :: IO (Phis Double)
+
+    patches <- V.replicateM numPatch $ randomPlaneS 64
+
+    runTest 500 patches initialPhis
+
+
+
+
+writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
     savePatches (printf "%spatches%05d.bin" dn i) patches
     savePhis    (printf "%sphis%05d.bin" dn i) phis'
     _ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'
+    _ <-multiplotFileS (printf "%sit-p-%05d.png" dn i) (patches V.++ phis')
+    _ <-multiplotFileS (printf "%sit-step-%05d.png" dn i) (phis V.++ phis')
   
     -- process errors
     let (il,ih,is) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorInit
@@ -124,8 +154,8 @@ writeIteration dn i patches phis' errorInit errorAs errorPhis = do
 readIteration dn i = do
     patches <- loadPatches (printf "%spatches%05d.bin" dn i)
     phis    <- loadPhis    (printf "%sphis%05d.bin" dn i)
-    (errorInit, errorAs, errorPhis) <- read <$> readFile (printf "%serrors%05d.bin" dn i)
-    return (patches, phis, errorInit, errorAs, errorPhis)
+    {-(errorInit, errorAs, errorPhis) <- read <$> readFile (printf "%serrors%05d.bin" dn i)-}
+    return (patches, phis)
 
 
 

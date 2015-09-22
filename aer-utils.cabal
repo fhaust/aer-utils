@@ -32,7 +32,7 @@ executable learngabors
                        old-locale,
                        random,
                        MonadRandom,
-                       --GA,
+                       async,
                        vector,
                        vector-th-unbox,
                        vector-algorithms,

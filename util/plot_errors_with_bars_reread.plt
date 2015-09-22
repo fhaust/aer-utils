@@ -11,5 +11,5 @@ plot filename using 1:2:3:4  with errorbars notitle,\
      filename using 1:8 with lines title 'mean error after updating phis'
 
 
-pause -1
-#reread
+pause 1
+reread

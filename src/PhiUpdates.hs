@@ -23,8 +23,11 @@ import           Common
 {-        errorFun :: S.Vector Double -> Double-}
 {-        errorFun vs = V.sum $ V.zipWith (\patch as -> reconstructionError patch (unflattenV numPhis vs) as) patches fittedAs-}
 
-updatePhis :: Int -> Patch Double -> Phis Double -> As Double -> (Phis Double, LA.Matrix Double)
-updatePhis _ patch phis fittedAs = (unflattenV numPhis result, mat)
+updatePhis :: Patch Double -> Phis Double -> As Double -> Phis Double
+updatePhis patch phis fittedAs = fst $ updatePhis' patch phis fittedAs
+
+updatePhis' :: Patch Double -> Phis Double -> As Double -> (Phis Double, LA.Matrix Double)
+updatePhis' patch phis fittedAs = (unflattenV numPhis result, mat)
   where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenV phis)
         precision  = 1e-9 -- TODO decide on parameters for this
         iterations = 1000 
