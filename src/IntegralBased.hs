@@ -88,14 +88,15 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
 
           -- fit the phis
           fittedPhis :: V.Vector (Phis Double)
-          fittedPhis = V.zipWith (\as patch -> updatePhis patch phis as) fittedAs patches
+          fittedPhis = withStrategy (parTraversable rdeepseq)
+                     $ V.zipWith (\as patch -> updatePhis patch phis as) fittedAs patches
 
           -- scale as so that the maximum is not more than one
           -- **8 is there to "convince" the phi to go in the direction of
           -- one patch
           {-maxA       = V.maximum . V.map S.maximum $ fittedAs-}
           {-scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**16)) fittedAs-}
-          maxAs     = traceShowId $ V.foldl' (S.zipWith max) (S.replicate numPhis (1/0)) fittedAs
+          maxAs     = traceShowId $ V.foldl' (S.zipWith max) (S.replicate numPhis (-1/0)) fittedAs
           scaledAs  = traceShowId $ V.map (\as -> S.zipWith (/) as maxAs) fittedAs
 
           -- scale phis according to scaled as and learning rate

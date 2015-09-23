@@ -44,10 +44,13 @@ main :: IO ()
 main = do
     putStrLn "starting"
 
-    let tests = [testPatch1 1 False
-                ,testPatch1 2 False
-                ,testPatch2 1 False
-                ,testPatch2 2 False
+    let tests = [--testPatch 1 1 False
+                {-,testPatch 1 2 False-}
+                {-,testPatch 2 1 False-}
+                {-,testPatch 2 2 False-}
+                 testPatch 3 1 False
+                ,testPatch 3 2 False
+                ,testPatch 3 3 False
                 {-,testPatchR 3 1 False-}
                 {-,testPatchR 3 2 False-}
                 {-,testPatchR 3 3 False-}
@@ -85,6 +88,8 @@ runTest getPatches initialPhis random = do
     -- create directory to store output
     let dn = printf "data/test-patch-%d-phi-%d-random-%s/" numPatches (V.length initialPhis) (show random)
     createDirectoryIfMissing True dn
+    createDirectoryIfMissing True (dn ++ "phis/")
+    createDirectoryIfMissing True (dn ++ "last-phis/")
     writeFile (dn ++ "errors.csv") ""
 
 
@@ -114,41 +119,21 @@ planeS o n num = S.fromList <$> plane o n num
 randomPlaneS num = S.fromList <$> randomPlane num
 
 
-testPatch1 numPhi random = do
+testPatch numPatches numPhi random = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 16
                                          $ (V3 <$> getRandomR (0,5)
                                                <*> getRandomR (0,5)
                                                <*> getRandomR (0,5)) :: IO (Phis Double)
 
-    let patches = V.replicateM 1 $ planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
-
-    runTest patches initialPhis random
-
-testPatch2 numPhi random = do
-
-    initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
-
-    let patches = V.sequence $ V.fromList [planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
-                                          ,planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 64
-                                          ]
+    let patches = V.sequence $ V.fromListN numPatches [planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 64
+                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 1 0) 64
+                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
+                                                      ]
 
     runTest patches initialPhis random
 
 
-testPatchR numPatch numPhi random = do
-
-    initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
-
-    let patches = V.replicateM numPatch $ randomPlaneS 64
-
-    runTest patches initialPhis random
 
 
 
@@ -158,7 +143,7 @@ writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
     _ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'
     _ <-multiplotFileS (printf "%sit-p-%05d.png" dn i) (patches V.++ phis')
     _ <-multiplotFileS (printf "%sit-step-%05d.png" dn i) (phis V.++ phis')
-  
+
     -- process errors
     let (il,ih,is) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorInit
     let (al,ah,as) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorAs
@@ -168,7 +153,13 @@ writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
         pm         = ps / (fromIntegral $ V.length errorPhis)
 
     appendFile (printf "%serrors.csv" dn) (printf "%d %f %f %f %f %f %f %f %f %f\n" i im il ih am al ah pm pl ph)
-    
+
+    -- write phis in a format that gnuplot understands
+    iforM_ phis' $ \phiI phi -> do
+        let s = unlines . map (\(V3 x y z) -> printf "%f %f %f" x y z) . S.toList $ phi
+        writeFile (printf "%sphis/it-%05d-phi-%02d.csv" dn i phiI) s
+        writeFile (printf "%slast-phis/phi-%02d.csv" dn phiI) s
+
 
 readIteration dn i = do
     patches <- loadPatches (printf "%spatches%05d.bin" dn i)
