@@ -3,12 +3,12 @@
 
 set terminal qt persist
 
-plot filename using 1:2:3:4  with errorbars notitle,\
-     filename using 1:5:6:7  with errorbars notitle,\
-     filename using 1:8:9:10 with errorbars notitle,\
-     filename using 1:2 with lines title 'mean error before iteration',\
-     filename using 1:5 with lines title 'mean error after fitting as',\
-     filename using 1:8 with lines title 'mean error after updating phis'
+plot filename using 1:2:3:4 with errorbars ls 1 notitle,\
+     filename using 1:2 with lines ls 1 title 'mean error before iteration',\
+     filename using 1:5:6:7 with errorbars ls 2 notitle,\
+     filename using 1:5 with lines ls 2 title 'mean error after fitting as',\
+     filename using 1:8:9:10 with errorbars ls 3 notitle,\
+     filename using 1:8 with lines ls 3 title 'mean error after updating phis'
 
 
 pause 1

@@ -12,9 +12,9 @@ plot filename using 1:2:3:4 with errorbars ls 1 notitle,\
      filename using 1:8 with lines ls 3 title 'mean error after updating phis'
 
 set title title
-set xrange [0:100]
+#set xrange [0:100]
 
 replot
 
-#pause -1
+pause -1
 #reread
