@@ -44,21 +44,26 @@ main :: IO ()
 main = do
     putStrLn "starting"
 
-    testPatch1 1
-    testPatch1 2
-    testPatch2 1
-    testPatch2 2
-    testPatchR 3 1
-    testPatchR 3 2
-    testPatchR 3 3
+    let tests = [testPatch1 1 False
+                ,testPatch1 2 False
+                ,testPatch2 1 False
+                ,testPatch2 2 False
+                ,testPatchR 3 1 False
+                ,testPatchR 3 2 False
+                ,testPatchR 3 3 False
 
-    testPatchR1 1
-    testPatchR1 2
-    testPatchR2 1
-    testPatchR2 2
-    testPatchRR 3 1
-    testPatchRR 3 2
-    testPatchRR 3 3
+                ,testPatch1 1 True
+                ,testPatch1 2 True
+                ,testPatch2 1 True
+                ,testPatch2 2 True
+                ,testPatchR 3 1 True
+                ,testPatchR 3 2 True
+                ]
+
+    -- execute and wait for results
+    asyncs <- sequence $ map async tests
+    sequence_ $ map wait asyncs
+
 
     putStrLn "done"
 
@@ -70,20 +75,24 @@ main = do
 
 iterations = 500
 
-runTest :: IO (Patches Double) -> Phis Double -> IO ()
-runTest getPatches initialPhis = do
+runTest :: IO (Patches Double) -> Phis Double -> Bool -> IO ()
+runTest getPatches initialPhis random = do
+
+    -- get patches once
+    staticPatches <- getPatches
+    let numPatches = V.length staticPatches
 
     -- create directory to store output
-    numPatches <- V.length <$> getPatches
-    let dn = printf "data/test-patch-%d-phi-%d/" numPatches (V.length initialPhis)
+    let dn = printf "data/test-patch-%d-phi-%d-random-%s/" numPatches (V.length initialPhis) (show random)
     createDirectoryIfMissing True dn
     writeFile (dn ++ "errors.csv") ""
+
 
     -- run interations
     phisPtr <- newIORef initialPhis
     forM_ ([0..iterations]::[Int]) $ \i -> do
 
-      patches <- getPatches
+      patches <- if random then getPatches else return staticPatches
 
       putStrLn $ "-- iteration " ++ show i ++ " --"
       sTime <- getCurrentTime 
@@ -105,81 +114,41 @@ planeS o n num = S.fromList <$> plane o n num
 randomPlaneS num = S.fromList <$> randomPlane num
 
 
-testPatch1 numPhi = do
+testPatch1 numPhi random = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 16
                                          $ (V3 <$> getRandomR (0,5)
                                                <*> getRandomR (0,5)
                                                <*> getRandomR (0,5)) :: IO (Phis Double)
 
-    patches <- V.replicateM 1 $ planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
+    let patches = V.replicateM 1 $ planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
 
-    runTest (return patches) initialPhis
+    runTest patches initialPhis random
 
-testPatch2 numPhi = do
-
-    initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
-
-    patches <- V.sequence $ V.fromList [planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
-                                       ,planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 64
-                                       ]
-
-    runTest (return patches) initialPhis
-
-
-testPatchR numPatch numPhi = do
+testPatch2 numPhi random = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 16
                                          $ (V3 <$> getRandomR (0,5)
                                                <*> getRandomR (0,5)
                                                <*> getRandomR (0,5)) :: IO (Phis Double)
 
-    patches <- V.replicateM numPatch $ randomPlaneS 64
-
-    runTest (return patches) initialPhis
-
------------------------------
--- R A N D O M   T E S T S --
------------------------------
-
-testPatchR1 numPhi = do
-
-    initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
-
-    let patches = V.replicateM 1 $ planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 32
-
-    runTest patches initialPhis
-
-
-testPatchR2 numPhi = do
-
-    initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
-
-    let patches = V.sequence $ V.fromList [planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 32
-                                          ,planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 32
+    let patches = V.sequence $ V.fromList [planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
+                                          ,planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 64
                                           ]
 
-    runTest patches initialPhis
+    runTest patches initialPhis random
 
-testPatchRR numPatch numPhi = do
+
+testPatchR numPatch numPhi random = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 16
                                          $ (V3 <$> getRandomR (0,5)
                                                <*> getRandomR (0,5)
                                                <*> getRandomR (0,5)) :: IO (Phis Double)
 
-    let patches = V.replicateM numPatch $ randomPlaneS 32
+    let patches = V.replicateM numPatch $ randomPlaneS 64
 
-    runTest patches initialPhis
+    runTest patches initialPhis random
 
 
 
