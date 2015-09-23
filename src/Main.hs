@@ -48,16 +48,16 @@ main = do
                 ,testPatch1 2 False
                 ,testPatch2 1 False
                 ,testPatch2 2 False
-                ,testPatchR 3 1 False
-                ,testPatchR 3 2 False
-                ,testPatchR 3 3 False
+                {-,testPatchR 3 1 False-}
+                {-,testPatchR 3 2 False-}
+                {-,testPatchR 3 3 False-}
 
-                ,testPatch1 1 True
-                ,testPatch1 2 True
-                ,testPatch2 1 True
-                ,testPatch2 2 True
-                ,testPatchR 3 1 True
-                ,testPatchR 3 2 True
+                {-,testPatch1 1 True-}
+                {-,testPatch1 2 True-}
+                {-,testPatch2 1 True-}
+                {-,testPatch2 2 True-}
+                {-,testPatchR 3 1 True-}
+                {-,testPatchR 3 2 True-}
                 ]
 
     -- execute and wait for results

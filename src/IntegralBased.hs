@@ -76,6 +76,9 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
           --           . V.foldl1' (V.zipWith (S.zipWith (+))) 
           --           $ scaledPhis
 
+          numPatches = V.length patches
+          numPhis    = V.length phis
+
           -- fitting the as (one a per phi per patch)
           initialAs  = V.replicate (V.length patches) $ S.replicate (V.length phis) 1
           fittedAs   = traceShowId 
@@ -90,8 +93,10 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
           -- scale as so that the maximum is not more than one
           -- **8 is there to "convince" the phi to go in the direction of
           -- one patch
-          maxA       = V.maximum . V.map S.maximum $ fittedAs
-          scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**16)) fittedAs
+          {-maxA       = V.maximum . V.map S.maximum $ fittedAs-}
+          {-scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**16)) fittedAs-}
+          maxAs     = traceShowId $ V.foldl' (S.zipWith max) (S.replicate numPhis (1/0)) fittedAs
+          scaledAs  = traceShowId $ V.map (\as -> S.zipWith (/) as maxAs) fittedAs
 
           -- scale phis according to scaled as and learning rate
           eta        = 0.1
@@ -100,14 +105,13 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
               where go as phis' 
                      = V.zipWith3 (\a phi phi' -> S.zipWith (\e e' -> e + ((eta * a) *^ (e' - e))) phi phi') as phis phis'
 
-          numPatches = fromIntegral $ V.length patches
-          meanPhis   = V.map (S.map (\e -> e ^/ numPatches))
+          meanPhis   = V.map (S.map (\e -> e ^/ fromIntegral numPatches))
                      . V.foldl1' (V.zipWith (S.zipWith (+))) 
                      $ scaledPhis
 
-          errorInits = traceShowId $ V.zipWith (\patch as -> reconstructionError patch phis as) patches initialAs
-          errorAs    = traceShowId $ V.zipWith (\patch as -> reconstructionError patch phis as) patches fittedAs
-          errorPhis  = traceShowId $ V.zipWith (\patch as -> reconstructionError patch meanPhis as) patches scaledAs
+          errorInits = V.zipWith (\patch as -> reconstructionError patch phis as) patches initialAs
+          errorAs    = V.zipWith (\patch as -> reconstructionError patch phis as) patches fittedAs
+          errorPhis  = V.zipWith (\patch as -> reconstructionError patch meanPhis as) patches scaledAs
 
 
 
