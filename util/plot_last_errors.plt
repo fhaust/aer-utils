@@ -10,5 +10,5 @@ list = system('ls '.filename.'*')
 
 splot for [file in list] file using 1:2:3
 
-pause -1
-/*reread*/
+pause 1
+reread

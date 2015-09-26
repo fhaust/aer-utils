@@ -58,7 +58,11 @@ gradientDescentToFindAs patch phis randomAs = fst $ gradientDescentToFindAs' pat
 gradientDescentToFindAs' :: Patch Double -> Phis Double -> As Double -> (S.Vector Double, LA.Matrix Double)
 gradientDescentToFindAs' patch phis randomAs = 
     minimizeV NMSimplex2 10e-9 1000 (S.replicate (length phis) 1) errorFun (V.convert randomAs)
-    where errorFun v = reconstructionError patch phis (V.convert v)
+    where errorFun as = reconstructionError patch phis (V.convert as)
+                      + sparseness as
+
+sparseness as = S.sum $ S.map (\a -> log (1 + (a/σ)**2)) as
+  where σ = 0.316 -- from olshausens code
 
 
 

@@ -48,9 +48,9 @@ main = do
                 {-,testPatch 1 2 False-}
                 {-,testPatch 2 1 False-}
                 {-,testPatch 2 2 False-}
-                 testPatch 3 1 False
-                ,testPatch 3 2 False
-                ,testPatch 3 3 False
+                {- testPatch 3 1 False-}
+                {-,testPatch 3 2 False-}
+                {-,testPatch 3 3 False-}
                 {-,testPatchR 3 1 False-}
                 {-,testPatchR 3 2 False-}
                 {-,testPatchR 3 3 False-}
@@ -61,6 +61,8 @@ main = do
                 {-,testPatch2 2 True-}
                 {-,testPatchR 3 1 True-}
                 {-,testPatchR 3 2 True-}
+
+                  testRealStuff 4 2
                 ]
 
     -- execute and wait for results
@@ -134,6 +136,21 @@ testPatch numPatches numPhi random = do
     runTest patches initialPhis random
 
 
+testRealStuff numPatches numPhis = do
+
+    let ws = V3 5 5 0.1 -- window size
+        patchSize = 32 -- minimum
+        phiSize   = 16
+    es <- convertToV3s <$> DVS.mmapDVSData "../common/ori-dir-stimulus-slice.aedat"
+
+    initialPhis  <- V.replicateM numPhis
+                  $ S.replicateM phiSize (mapM (\a -> getRandomR (0,a)) ws) :: IO (Phis Double)
+
+    let getPatches = normalizePatches <$> selectPatches patchSize ws numPatches es
+
+    runTest getPatches initialPhis True
+
+
 
 
 
@@ -189,14 +206,21 @@ selectPatches minSize windowSize num es = go V.empty
 
 
 selectPatch :: MonadRandom m => V3 Double -> S.Vector (V3 Double) -> m (S.Vector (V3 Double))
-selectPatch (V3 sx sy st) es = do
-  x <- getRandomR (0, 128-sx)
-  y <- getRandomR (0, 128-sy)
-  t <- getRandomR (view _t $ S.head es, (view _t $ S.last es) - st)
+selectPatch s@(V3 sx sy st) es = do
+  {-x <- getRandomR (0, 128-sx)-}
+  {-y <- getRandomR (0, 128-sy)-}
+  {-t <- getRandomR (view _t $ S.head es, (view _t $ S.last es) - st)-}
 
-  {-traceM $ "(" ++ show x ++ "," ++ show y ++ "," ++ show t ++ ")"-}
+  {-[>traceM $ "(" ++ show x ++ "," ++ show y ++ "," ++ show t ++ ")"<]-}
 
-  return $ sliceSpaceTimeWindow (V3 x y t) (V3 (x+sx) (y+sy) (t+st)) es
+  {-return $ sliceSpaceTimeWindow (V3 x y t) (V3 (x+sx) (y+sy) (t+st)) es-}
+
+
+  i <- getRandomR (0, S.length es - 1)
+
+  let m = es S.! i
+
+  return $ sliceSpaceTimeWindow (m - (s/2)) (m + (s/2)) es
 
 
 

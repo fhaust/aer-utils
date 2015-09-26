@@ -10,6 +10,7 @@ plot filename using 1:2:3:4 with errorbars ls 1 notitle,\
      filename using 1:8:9:10 with errorbars ls 3 notitle,\
      filename using 1:8 with lines ls 3 title 'mean error after updating phis'
 
+set title title
 
 pause 1
 reread
