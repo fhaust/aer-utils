@@ -3,6 +3,7 @@
 {-# LANGUAGE MonadComprehensions #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
@@ -10,6 +11,7 @@ import           IntegralBased
 import           ArtificialData
 import           Types
 import           Linear
+import           ChartPlotting
 
 import           System.Directory
 import           System.Locale
@@ -21,14 +23,16 @@ import qualified Data.AER.DVS128 as DVS
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as S
 
+import qualified Data.Text as T
+
 import           Data.Thyme.Clock
 import           Data.Thyme.Format
 import           Data.Maybe
 import           Data.Function
 import           Data.AffineSpace
 import           Data.IORef
-
-import           OlshausenOnStreams.Plotting
+import           Data.List
+import           Data.Binary
 
 import           Control.Monad
 import           Control.Monad.Random
@@ -44,25 +48,16 @@ main :: IO ()
 main = do
     putStrLn "starting"
 
-    let tests = [--testPatch 1 1 False
-                {-,testPatch 1 2 False-}
-                {-,testPatch 2 1 False-}
-                {-,testPatch 2 2 False-}
-                {- testPatch 3 1 False-}
-                {-,testPatch 3 2 False-}
-                {-,testPatch 3 3 False-}
-                {-,testPatchR 3 1 False-}
-                {-,testPatchR 3 2 False-}
-                {-,testPatchR 3 3 False-}
+    let tests = [testPatch 1 1 False
+                ,testPatch 1 2 False
+                ,testPatch 2 1 False
+                ,testPatch 2 2 False
+                ,testPatch 3 1 False
+                ,testPatch 3 2 False
+                ,testPatch 3 3 False
 
-                {-,testPatch1 1 True-}
-                {-,testPatch1 2 True-}
-                {-,testPatch2 1 True-}
-                {-,testPatch2 2 True-}
-                {-,testPatchR 3 1 True-}
-                {-,testPatchR 3 2 True-}
-
-                  testRealStuff 4 2
+                ,testRealStuff "../common/ori-dir-stimulus-slice.aedat" "grid" 9 2
+                ,testRealStuff "../common/ori-dir-stimulus-hor-line-slice.aedat" "horline" 9 2
                 ]
 
     -- execute and wait for results
@@ -80,24 +75,28 @@ main = do
 
 iterations = 500
 
-runTest :: IO (Patches Double) -> Phis Double -> Bool -> IO ()
-runTest getPatches initialPhis random = do
+runTest :: String -> IO (Patches Double) -> Phis Double -> Bool -> IO ()
+runTest prefix getPatches initialPhis random = do
 
     -- get patches once
     staticPatches <- getPatches
     let numPatches = V.length staticPatches
 
     -- create directory to store output
-    let dn = printf "data/test-patch-%d-phi-%d-random-%s/" numPatches (V.length initialPhis) (show random)
+    let dn = prefix
     createDirectoryIfMissing True dn
     createDirectoryIfMissing True (dn ++ "phis/")
     createDirectoryIfMissing True (dn ++ "last-phis/")
     writeFile (dn ++ "errors.csv") ""
 
+    -- setup metrics
+    let labelBase = printf "patch-%d-phi-%d" numPatches (V.length initialPhis)
+    let iLabel = T.pack (labelBase ++ "-iterations")
+    let eLabel = T.pack (labelBase ++ "-fit-a-error")
 
     -- run interations
     phisPtr <- newIORef initialPhis
-    forM_ ([0..iterations]::[Int]) $ \i -> do
+    err <- forM ([0..iterations]::[Int]) $ \i -> do
 
       patches <- if random then getPatches else return staticPatches
 
@@ -113,9 +112,18 @@ runTest getPatches initialPhis random = do
       -- write out everything
       writeIteration dn i patches phis phis' errorInit errorA errorPhi
 
-
       eTime <- getCurrentTime
       putStrLn $ "time taken: " ++ show (eTime .-. sTime)
+
+      return (errorInit,errorA)
+
+
+    -- plot errors
+    let (ea,eb) = unzip err
+
+    plotReconstructionError (dn ++ "errors.png") (map V.toList ea) (map V.toList eb)
+
+    putStrLn "done"
 
 planeS o n num = S.fromList <$> plane o n num
 randomPlaneS num = S.fromList <$> randomPlane num
@@ -128,27 +136,29 @@ testPatch numPatches numPhi random = do
                                                <*> getRandomR (0,5)
                                                <*> getRandomR (0,5)) :: IO (Phis Double)
 
-    let patches = V.sequence $ V.fromListN numPatches [planeS (V3 2.5 2.5 2.5) (V3 1 0 0) 64
-                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 1 0) 64
-                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 0 1) 64
+    let patches = V.sequence $ V.fromListN numPatches [planeS (V3 2.5 2.5 2.5) (V3 1 0 1) 64
+                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 1 1) 64
+                                                      ,planeS (V3 2.5 2.5 2.5) (V3 1 0 (-1)) 64
+                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 1 (-1)) 64
                                                       ]
+    let prefix = printf "data/test-patch-%d-phi-%d-random-%s/" numPatches numPhi (show random)
+    runTest prefix patches initialPhis random
 
-    runTest patches initialPhis random
 
-
-testRealStuff numPatches numPhis = do
+testRealStuff fn ident numPatches numPhis = do
 
     let ws = V3 5 5 0.1 -- window size
         patchSize = 32 -- minimum
         phiSize   = 16
-    es <- convertToV3s <$> DVS.mmapDVSData "../common/ori-dir-stimulus-slice.aedat"
+    es <- convertToV3s <$> DVS.mmapDVSData fn
 
     initialPhis  <- V.replicateM numPhis
                   $ S.replicateM phiSize (mapM (\a -> getRandomR (0,a)) ws) :: IO (Phis Double)
 
     let getPatches = normalizePatches <$> selectPatches patchSize ws numPatches es
 
-    runTest getPatches initialPhis True
+    let prefix = printf "data/test-patch-%d-phi-%d-fn-%s/" numPatches numPhis (ident::String)
+    runTest prefix getPatches initialPhis True
 
 
 
@@ -157,9 +167,11 @@ testRealStuff numPatches numPhis = do
 writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
     savePatches (printf "%spatches%05d.bin" dn i) patches
     savePhis    (printf "%sphis%05d.bin" dn i) phis'
-    _ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'
-    _ <-multiplotFileS (printf "%sit-p-%05d.png" dn i) (patches V.++ phis')
-    _ <-multiplotFileS (printf "%sit-step-%05d.png" dn i) (phis V.++ phis')
+    iforM_ phis' (\j phi -> plotEvents (printf "%sit-%05d-phi-%d.png" dn i j) phi)
+    iforM_ patches (\j patch -> plotEvents (printf "%sit-%05d-patch-%d.png" dn i j) patch)
+    {-_ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'-}
+    {-_ <-multiplotFileS (printf "%sit-p-%05d.png" dn i) (patches V.++ phis')-}
+    {-_ <-multiplotFileS (printf "%sit-step-%05d.png" dn i) (phis V.++ phis')-}
 
     -- process errors
     let (il,ih,is) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorInit
@@ -206,20 +218,9 @@ selectPatches minSize windowSize num es = go V.empty
 
 
 selectPatch :: MonadRandom m => V3 Double -> S.Vector (V3 Double) -> m (S.Vector (V3 Double))
-selectPatch s@(V3 sx sy st) es = do
-  {-x <- getRandomR (0, 128-sx)-}
-  {-y <- getRandomR (0, 128-sy)-}
-  {-t <- getRandomR (view _t $ S.head es, (view _t $ S.last es) - st)-}
-
-  {-[>traceM $ "(" ++ show x ++ "," ++ show y ++ "," ++ show t ++ ")"<]-}
-
-  {-return $ sliceSpaceTimeWindow (V3 x y t) (V3 (x+sx) (y+sy) (t+st)) es-}
-
-
+selectPatch s es = do
   i <- getRandomR (0, S.length es - 1)
-
   let m = es S.! i
-
   return $ sliceSpaceTimeWindow (m - (s/2)) (m + (s/2)) es
 
 
@@ -255,3 +256,19 @@ binarySearchByBounds cmp vec e = loop
   where k = (u + l) `div` 2
 
 
+savePatches :: FilePath -> Patches Double -> IO ()
+savePatches fn patches = encodeFile fn (V.toList . V.map S.toList $ patches)
+loadPatches :: FilePath -> IO (Patches Double)
+loadPatches fn = V.map S.fromList . V.fromList <$> decodeFile fn
+
+savePhis :: FilePath -> Phis Double -> IO ()
+savePhis fn phis = encodeFile fn (V.toList . V.map S.toList $ phis)
+loadPhis :: FilePath -> IO (Phis Double)
+loadPhis fn = V.map S.fromList . V.fromList <$> decodeFile fn
+
+loadDataset dn = do
+    patch <- loadPatches (dn ++ "/patches.bin")
+    phiNames <- init . sort . filter ("phis" `isPrefixOf`) <$> getDirectoryContents dn
+    phis <- mapM (\n -> loadPhis $ dn ++ "/" ++ n) phiNames
+
+    return (patch,phis)

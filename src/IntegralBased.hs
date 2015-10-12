@@ -8,42 +8,18 @@
 
 module IntegralBased  where
 
-import           Data.Number.Erf
-import           Data.List
-import           Data.Binary
-import           Data.Thyme
-import           Data.Foldable
-import           Data.AffineSpace
-
-import           Text.Printf
-
-import           System.Directory
-import           System.Locale
-
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as S
-import qualified Data.Vector.Generic as G
-{-import qualified Data.Vector.Unboxed as U-}
-import           Linear hiding (trace)
+import           Linear
 
-
-import           Control.Monad
-import           Control.Monad.Random
 import           Control.Parallel.Strategies
 
-import           Debug.Trace
-
-import           Orphans
-
 import qualified Numeric.LinearAlgebra as LA
-import           Numeric.GSL.Integration
 import           Numeric.GSL.Minimization
-import           Numeric.FastMath
+import           Numeric.FastMath()
 
-import           GHC.Conc (numCapabilities)
+{-import           GHC.Conc (numCapabilities)-}
 
-import           OlshausenOnStreams.Plotting
-import           VanRossumError
 import           PhiUpdates
 import           Types
 import           Common
@@ -61,6 +37,7 @@ gradientDescentToFindAs' patch phis randomAs =
     where errorFun as = reconstructionError patch phis (V.convert as)
                       + sparseness as
 
+sparseness :: (Floating a, S.Storable a) => S.Vector a -> a
 sparseness as = S.sum $ S.map (\a -> log (1 + (a/σ)**2)) as
   where σ = 0.316 -- from olshausens code
 
@@ -69,24 +46,14 @@ sparseness as = S.sum $ S.map (\a -> log (1 + (a/σ)**2)) as
 --------------------------------------------------
 
 
-{-oneIteration :: Int -> Patches Double -> Phis Double -> Phis Double-}
 oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
     where 
-          --(scaledPhis,errorInits,errorAs,errorPhis) = V.unzip4 
-          --           $ withStrategy (parTraversable rdeepseq)
-          --           $ V.map (\patch -> oneIterationPatch patch phis) patches
-          --numPatches = fromIntegral $ V.length patches
-          --meanPhis   = V.map (S.map (\e -> e ^/ numPatches))
-          --           . V.foldl1' (V.zipWith (S.zipWith (+))) 
-          --           $ scaledPhis
-
           numPatches = V.length patches
           numPhis    = V.length phis
 
           -- fitting the as (one a per phi per patch)
           initialAs  = V.replicate (V.length patches) $ S.replicate (V.length phis) 1
-          fittedAs   = traceShowId 
-                     $ withStrategy (parTraversable rdeepseq)
+          fittedAs   = withStrategy (parTraversable rdeepseq)
                      $ V.zipWith (\as patch -> gradientDescentToFindAs patch phis as) initialAs patches
 
 
@@ -100,8 +67,8 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
           -- one patch
           {-maxA       = V.maximum . V.map S.maximum $ fittedAs-}
           {-scaledAs   = traceShowId $ V.map (S.map (\a -> (a / maxA)**16)) fittedAs-}
-          maxAs     = traceShowId $ V.foldl' (S.zipWith max) (S.replicate numPhis (-1/0)) fittedAs
-          scaledAs  = traceShowId $ V.map (\as -> S.zipWith (/) as maxAs) fittedAs
+          maxAs     = V.foldl' (S.zipWith max) (S.replicate numPhis (-1/0)) fittedAs
+          scaledAs  = V.map (\as -> S.zipWith (/) as maxAs) fittedAs
 
           -- scale phis according to scaled as and learning rate
           eta        = 0.1
@@ -132,30 +99,30 @@ oneIterationPatch patch phis = (scaledPhis, errorInit, errorAs, errorPhis)
           fittedPhis = updatePhis patch phis fittedAs
 
           {-clampedAs  = traceShowId $ S.map (\a -> min 1 (max 0 a)) fittedAs-}
-          clampedAs  = traceShowId $ S.map (\a -> a / 5) fittedAs
+          clampedAs  = S.map (\a -> a / 5) fittedAs
           minA       = S.minimum fittedAs
           maxA       = S.maximum fittedAs
           scaledPhis = V.zipWith3 (\a -> S.zipWith (\e e' -> e + ((0.1 * a) *^ (e' - e)))) 
                                   (V.convert clampedAs) phis fittedPhis 
 
-          errorInit = traceShowId $ reconstructionError patch phis initialAs
-          errorAs   = traceShowId $ reconstructionError patch phis fittedAs
-          errorPhis = traceShowId $ reconstructionError patch fittedPhis fittedAs
+          errorInit = reconstructionError patch phis initialAs
+          errorAs   = reconstructionError patch phis fittedAs
+          errorPhis = reconstructionError patch scaledPhis clampedAs
 
           {-msg = printf "errors -> pre: %f, as: %f, phis: %f" errorInit errorAs errorPhis-}
 
 
 
 
-testData = do
-    patchA <- S.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.0) :: IO (Patch Double)
-    patchB <- S.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 1.0) :: IO (Patch Double)
-    let patches = V.fromList [patchA, patchB]
+{-testData = do-}
+{-    patchA <- S.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 0.0) :: IO (Patch Double)-}
+{-    patchB <- S.replicateM 32 $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> pure 1.0) :: IO (Patch Double)-}
+{-    let patches = V.fromList [patchA, patchB]-}
 
-    phis  <- V.replicateM 2 $ S.replicateM 16 
-                            $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)
+{-    phis  <- V.replicateM 2 $ S.replicateM 16 -}
+{-                            $ (V3 <$> getRandomR (0,128) <*> getRandomR (0,128) <*> getRandomR (0,1)) :: IO (Phis Double)-}
 
-    return (patches,phis)
+{-    return (patches,phis)-}
 
 {-test = do-}
 
@@ -186,22 +153,6 @@ testData = do
 
 {-    return (patches,phis,phis')-}
 
-savePatches :: FilePath -> Patches Double -> IO ()
-savePatches fn patches = encodeFile fn (V.toList . V.map S.toList $ patches)
-loadPatches :: FilePath -> IO (Patches Double)
-loadPatches fn = V.map S.fromList . V.fromList <$> decodeFile fn
-
-savePhis :: FilePath -> Phis Double -> IO ()
-savePhis fn phis = encodeFile fn (V.toList . V.map S.toList $ phis)
-loadPhis :: FilePath -> IO (Phis Double)
-loadPhis fn = V.map S.fromList . V.fromList <$> decodeFile fn
-
-loadDataset dn = do
-    patch <- loadPatches (dn ++ "/patches.bin")
-    phiNames <- init . sort . filter ("phis" `isPrefixOf`) <$> getDirectoryContents dn
-    phis <- mapM (\n -> loadPhis $ dn ++ "/" ++ n) phiNames
-
-    return (patch,phis)
 
 
 
@@ -211,23 +162,23 @@ mergeSpikes :: S.Storable a => V.Vector (S.Vector a) -> S.Vector a
 mergeSpikes = V.foldl' (S.++) S.empty
 
 
--- | add a coefficient to a spike
-addA a (V3 x y z) = V4 a x y z
-{-# INLINABLE addA #-}
--- | add the same coefficient to a range of spikes
-addAs a vs = addA a <$> vs
-{-# INLINABLE addAs #-}
--- | 'addAs' specialized for Storable Vectors
-addAsS a vs = S.map (addA a) vs
-{-# INLINABLE addAsS #-}
+{--- | add a coefficient to a spike-}
+{-addA a (V3 x y z) = V4 a x y z-}
+{-[># INLINABLE addA #<]-}
+{--- | add the same coefficient to a range of spikes-}
+{-addAs a vs = addA a <$> vs-}
+{-[># INLINABLE addAs #<]-}
+{--- | 'addAs' specialized for Storable Vectors-}
+{-addAsS a vs = S.map (addA a) vs-}
+{-[># INLINABLE addAsS #<]-}
 
 -- | create 'V3' from 'Vector'
 -- no checks are performed to guarantee that 'v' is of the correct size
-unsafePackV3 v = V3 (v S.! 0) (v S.! 1) (v S.! 2)
-{-# INLINABLE unsafePackV3 #-}
+{-unsafePackV3 v = V3 (v S.! 0) (v S.! 1) (v S.! 2)-}
+{-[># INLINABLE unsafePackV3 #<]-}
 
-unpackV3 v = S.fromListN 3 $ toList v
-{-# INLINABLE unpackV3 #-}
+{-unpackV3 v = S.fromListN 3 $ toList v-}
+{-[># INLINABLE unpackV3 #<]-}
 
 
 infixl 4 <$$>
