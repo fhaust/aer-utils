@@ -6,11 +6,13 @@ module VanRossumError where
 import           Numeric.LinearAlgebra
 import           Numeric.GSL.Integration
 import           Linear
-import           Numeric.FastMath -- imports some optimization rules
+import           Numeric.FastMath() -- imports some optimization rules
 
 import qualified Data.Vector.Storable as S
 
 -- | calculate the van Rossum error between two spike trains
+vanRossumError ::
+  Vector (V3 Double) -> Vector (V3 Double) -> Double
 vanRossumError as bs = errorIntegral (as' S.++ bs')
   where as' = S.map (\(V3 x y z) -> (V4 1 x y z)) as
         bs' = S.map (\(V3 x y z) -> (V4 (-1) x y z)) bs
@@ -44,7 +46,7 @@ gauss (V4 a b c d) = a * exp( -0.5 * (b**2+c**2+d**2) )
 errFun :: S.Vector (V4 Double) -> V3 Double -> Double
 errFun gs (V3 x y z) = S.sum $ S.map (\(V4 a b c d) -> gauss (V4 a (x-b) (y-c) (z-d))) gs
 squaredErrFun :: S.Vector (V4 Double) -> V3 Double -> Double
-squaredErrFun gs v = (errFun gs v)**2
+squaredErrFun gs v = errFun gs v ** 2
 
 numericErrorIntegral :: S.Vector (V4 Double) -> (Double,Double)
 numericErrorIntegral gs = integrateQAGI 1e-6 500 (\z -> fst $ integrateQAGI 1e-6 500 (\y -> fst $ integrateQAGI 1e-6 500 (\x -> squaredErrFun gs (V3 x y z)) ))
