@@ -56,9 +56,9 @@ main = do
                 {-,testPatch 3 2 False-}
                 {-,testPatch 3 3 False-}
 
-                {-,testRealStuff "../common/ori-dir-stimulus-slice.aedat" "grid" 9 2-}
-                {-,testRealStuff "../common/ori-dir-stimulus-hor-line-slice.aedat" "horline" 9 2-}
-                testRealStuff "../common/ori-dir-stimulus-hor-line-and-back.aedat" "horline-and-back" 9 2
+                 testRealStuff "../common/ori-dir-stimulus-slice.aedat" "grid" 9 2
+                ,testRealStuff "../common/ori-dir-stimulus-hor-line-slice.aedat" "horline" 9 2
+                ,testRealStuff "../common/ori-dir-stimulus-hor-line-and-back.aedat" "horline-and-back" 9 2
                 ]
 
     -- execute and wait for results
@@ -130,12 +130,16 @@ planeS o n num = S.fromList <$> plane o n num
 randomPlaneS num = S.fromList <$> randomPlane num
 
 
+randomDensePhi :: MonadRandom m => Double -> Double -> Double -> m (Phi Double)
+randomDensePhi sx sy st = S.fromList <$> sequenceA [ V3 <$> pure x <*> pure y <*> getRandomR (0,st) | y <- [0..sy], x <- [0..sx] ]
+
 testPatch numPatches numPhi random = do
 
-    initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
+    {-initialPhis  <- V.replicateM numPhi $ S.replicateM 16-}
+    {-                                     $ (V3 <$> getRandomR (0,5)-}
+    {-                                           <*> getRandomR (0,5)-}
+    {-                                           <*> getRandomR (0,5)) :: IO (Phis Double)-}
+    initialPhis <- V.replicateM numPhi $ randomDensePhi 5 5 5
 
     let patches = V.sequence $ V.fromListN numPatches [planeS (V3 2.5 2.5 2.5) (V3 1 0 1) 64
                                                       ,planeS (V3 2.5 2.5 2.5) (V3 0 1 1) 64
