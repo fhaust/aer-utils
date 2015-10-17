@@ -48,16 +48,17 @@ main :: IO ()
 main = do
     putStrLn "starting"
 
-    let tests = [testPatch 1 1 False
-                ,testPatch 1 2 False
-                ,testPatch 2 1 False
-                ,testPatch 2 2 False
-                ,testPatch 3 1 False
-                ,testPatch 3 2 False
-                ,testPatch 3 3 False
+    let tests = [--testPatch 1 1 False
+                {-,testPatch 1 2 False-}
+                {-,testPatch 2 1 False-}
+                {-,testPatch 2 2 False-}
+                {-,testPatch 3 1 False-}
+                {-,testPatch 3 2 False-}
+                {-,testPatch 3 3 False-}
 
-                ,testRealStuff "../common/ori-dir-stimulus-slice.aedat" "grid" 9 2
-                ,testRealStuff "../common/ori-dir-stimulus-hor-line-slice.aedat" "horline" 9 2
+                {-,testRealStuff "../common/ori-dir-stimulus-slice.aedat" "grid" 9 2-}
+                {-,testRealStuff "../common/ori-dir-stimulus-hor-line-slice.aedat" "horline" 9 2-}
+                testRealStuff "../common/ori-dir-stimulus-hor-line-and-back.aedat" "horline-and-back" 9 2
                 ]
 
     -- execute and wait for results

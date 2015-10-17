@@ -16,5 +16,5 @@ set title title
 
 replot
 
-pause -1
+#pause -1
 #reread
