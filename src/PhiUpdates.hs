@@ -15,13 +15,11 @@ updatePhis :: Patch Double -> Phis Double -> As Double -> Phis Double
 updatePhis patch phis fittedAs = fst $ updatePhis' patch phis fittedAs
 
 updatePhis' :: Patch Double -> Phis Double -> As Double -> (Phis Double, LA.Matrix Double)
-updatePhis' patch phis fittedAs = (unflattenV numPhis result, mat)
+updatePhis' patch phis fittedAs = (unsafeUnflattenTimestamps phis result, mat)
   where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenTimestamps phis)
         precision  = 1e-9 -- TODO decide on parameters for this
         iterations = 1000 
-        {-searchBox  = S.replicate (V.sum (V.map S.length phis) * 3) 1 -- whatever-}
         searchBox  = S.replicate (V.sum (V.map S.length phis)) 1 -- whatever
-        numPhis    = V.length phis
         errorFun :: S.Vector Double -> Double
         errorFun vs = reconstructionError patch (unsafeUnflattenTimestamps phis vs) fittedAs
 
@@ -46,8 +44,10 @@ unflattenV n vs | remainder /= 0  = error $ "invalid size for unflattening, n = 
 flattenTimestamps :: Phis Double -> S.Vector Double
 flattenTimestamps = S.concat . V.toList . V.map (S.map (\(V3 _ _ t) -> t))
 
+
 -- | this is mostly unsafe because there are no checks for length
 -- | should be fine as long as it is just used here
+-- | TODO ... this could be easier
 unsafeUnflattenTimestamps :: Phis Double -> S.Vector Double -> Phis Double
 unsafeUnflattenTimestamps phis ts | V.sum (V.map S.length phis) /= S.length ts = error "sizes don't match"
                                   | otherwise = V.unfoldr go (phis,ts)
@@ -57,6 +57,9 @@ unsafeUnflattenTimestamps phis ts | V.sum (V.map S.length phis) /= S.length ts =
                           merged = S.zipWith (\(V3 x y _) t -> V3 x y t) h ts
                           h      = V.unsafeHead phis
 
+testTimestampFlattening :: [[(Double, Double, Double)]] -> Bool
+testTimestampFlattening phis = unsafeUnflattenTimestamps phis' (flattenTimestamps phis') == phis'
+  where phis' = V.map (S.fromList . map (\(x,y,z) -> V3 x y z)) $ V.fromList phis
 
 joinTimestamps :: Phis Double -> Phis Double -> Phis Double
 joinTimestamps = V.zipWith (S.zipWith (\(V3 x y _) (V3 _ _ t) -> V3 x y t))

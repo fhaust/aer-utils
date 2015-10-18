@@ -19,6 +19,7 @@ import           Numeric.GSL.Minimization
 import           Numeric.FastMath()
 
 {-import           GHC.Conc (numCapabilities)-}
+import           Debug.Trace
 
 import           PhiUpdates
 import           Types
@@ -85,31 +86,6 @@ oneIteration patches phis = (meanPhis,errorInits,errorAs,errorPhis)
           errorAs    = V.zipWith (\patch as -> reconstructionError patch phis as) patches fittedAs
           errorPhis  = V.zipWith (\patch as -> reconstructionError patch meanPhis as) patches scaledAs
 
-
-
-
-oneIterationPatch ::
-  Patch Double
-  -> Phis Double
-  -> (Phis Double, Double, Double, Double)
-oneIterationPatch patch phis = (scaledPhis, errorInit, errorAs, errorPhis)
-    where initialAs = S.replicate (V.length phis) 1
-
-          fittedAs = gradientDescentToFindAs patch phis initialAs
-          fittedPhis = updatePhis patch phis fittedAs
-
-          {-clampedAs  = traceShowId $ S.map (\a -> min 1 (max 0 a)) fittedAs-}
-          clampedAs  = S.map (\a -> a / 5) fittedAs
-          minA       = S.minimum fittedAs
-          maxA       = S.maximum fittedAs
-          scaledPhis = V.zipWith3 (\a -> S.zipWith (\e e' -> e + ((0.1 * a) *^ (e' - e)))) 
-                                  (V.convert clampedAs) phis fittedPhis 
-
-          errorInit = reconstructionError patch phis initialAs
-          errorAs   = reconstructionError patch phis fittedAs
-          errorPhis = reconstructionError patch scaledPhis clampedAs
-
-          {-msg = printf "errors -> pre: %f, as: %f, phis: %f" errorInit errorAs errorPhis-}
 
 
 
