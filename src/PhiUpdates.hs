@@ -16,13 +16,13 @@ updatePhis patch phis fittedAs = fst $ updatePhis' patch phis fittedAs
 
 updatePhis' :: Patch Double -> Phis Double -> As Double -> (Phis Double, LA.Matrix Double)
 updatePhis' patch phis fittedAs = (unflattenV numPhis result, mat)
-  where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenV phis)
+  where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenTimestamps phis)
         precision  = 1e-9 -- TODO decide on parameters for this
         iterations = 1000 
         searchBox  = S.replicate (V.sum (V.map S.length phis) * 3) 1 -- whatever
         numPhis    = V.length phis
         errorFun :: S.Vector Double -> Double
-        errorFun vs = reconstructionError patch (joinTimestamps phis (unflattenV numPhis vs)) fittedAs
+        errorFun vs = reconstructionError patch (unsafeUnflattenTimestamps phis vs) fittedAs
 
 flatten :: Phi Double -> S.Vector Double
 flatten = S.unsafeCast 
@@ -44,6 +44,16 @@ unflattenV n vs | remainder /= 0  = error $ "invalid size for unflattening, n = 
 
 flattenTimestamps :: Phis Double -> S.Vector Double
 flattenTimestamps = S.concat . V.toList . V.map (S.map (\(V3 _ _ t) -> t))
+
+-- | this is mostly unsafe because there are no checks for length
+-- | should be fine as long as it is just used here
+unsafeUnflattenTimestamps :: Phis Double -> S.Vector Double -> Phis Double
+unsafeUnflattenTimestamps = curry (V.unfoldr go)
+  where go (phis,ts) | V.null phis = Nothing
+                     | otherwise   = Just (merged, (V.unsafeTail phis, S.unsafeDrop (S.length h) ts))
+                        where
+                          merged = S.zipWith (\(V3 x y _) t -> V3 x y t) h ts
+                          h      = V.unsafeHead phis
 
 
 joinTimestamps :: Phis Double -> Phis Double -> Phis Double
