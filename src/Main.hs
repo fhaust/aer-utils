@@ -157,8 +157,9 @@ testRealStuff fn ident numPatches numPhis = do
         phiSize   = 16
     es <- convertToV3s <$> DVS.mmapDVSData fn
 
-    initialPhis  <- V.replicateM numPhis
-                  $ S.replicateM phiSize (mapM (\a -> getRandomR (0,a)) ws) :: IO (Phis Double)
+    {-initialPhis  <- V.replicateM numPhis-}
+    {-              $ S.replicateM phiSize (mapM (\a -> getRandomR (0,a)) ws) :: IO (Phis Double)-}
+    initialPhis <- V.replicateM numPhis $ randomDensePhi 5 5 0.1 
 
     let getPatches = normalizePatches <$> selectPatches patchSize ws numPatches es
 
