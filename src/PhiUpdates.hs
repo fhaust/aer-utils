@@ -19,7 +19,8 @@ updatePhis' patch phis fittedAs = (unflattenV numPhis result, mat)
   where (result, mat) = minimizeV NMSimplex2 precision iterations searchBox errorFun (flattenTimestamps phis)
         precision  = 1e-9 -- TODO decide on parameters for this
         iterations = 1000 
-        searchBox  = S.replicate (V.sum (V.map S.length phis) * 3) 1 -- whatever
+        {-searchBox  = S.replicate (V.sum (V.map S.length phis) * 3) 1 -- whatever-}
+        searchBox  = S.replicate (V.sum (V.map S.length phis)) 1 -- whatever
         numPhis    = V.length phis
         errorFun :: S.Vector Double -> Double
         errorFun vs = reconstructionError patch (unsafeUnflattenTimestamps phis vs) fittedAs
@@ -48,7 +49,8 @@ flattenTimestamps = S.concat . V.toList . V.map (S.map (\(V3 _ _ t) -> t))
 -- | this is mostly unsafe because there are no checks for length
 -- | should be fine as long as it is just used here
 unsafeUnflattenTimestamps :: Phis Double -> S.Vector Double -> Phis Double
-unsafeUnflattenTimestamps = curry (V.unfoldr go)
+unsafeUnflattenTimestamps phis ts | V.sum (V.map S.length phis) /= S.length ts = error "sizes don't match"
+                                  | otherwise = V.unfoldr go (phis,ts)
   where go (phis,ts) | V.null phis = Nothing
                      | otherwise   = Just (merged, (V.unsafeTail phis, S.unsafeDrop (S.length h) ts))
                         where
