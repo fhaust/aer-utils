@@ -7,6 +7,7 @@ import           Numeric.LinearAlgebra
 import           Numeric.GSL.Integration
 import           Linear
 import           Numeric.FastMath() -- imports some optimization rules
+import           Control.Parallel
 
 import qualified Data.Vector.Storable as S
 
@@ -34,8 +35,9 @@ errorIntegral vs = pi**(3/2) * fstSum + 2*pi**(3/2) * sndSum
 mapSumPairs ::
   (Num a, S.Storable b) => (b -> b -> a) -> S.Vector b -> a
 mapSumPairs f = go
-  where go vs = S.foldl' (\acc v -> acc + f (S.head vs) v) 0 (S.tail vs)
-              + if S.length vs > 2 then go (S.tail vs) else 0
+  where go vs = par a (seq b (a + b))
+          where a = S.foldl' (\acc v -> acc + f (S.head vs) v) 0 (S.tail vs)
+                b = if S.length vs > 2 then go (S.tail vs) else 0
 {-# INLINABLE mapSumPairs #-}
 
 
