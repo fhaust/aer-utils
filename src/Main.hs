@@ -76,8 +76,8 @@ main = do
 
 iterations = 500
 
-runTest :: String -> IO (Patches Double) -> Phis Double -> Bool -> IO ()
-runTest prefix getPatches initialPhis random = do
+runTest :: V3 Double -> String -> IO (Patches Double) -> Phis Double -> Bool -> IO ()
+runTest windowSize prefix getPatches initialPhis random = do
 
     -- get patches once
     staticPatches <- getPatches
@@ -108,7 +108,11 @@ runTest prefix getPatches initialPhis random = do
       -- run iteration
       phis <- readIORef phisPtr
       let (phis',errorInit,errorA,errorPhi) = oneIteration patches phis
-      writeIORef phisPtr phis'
+      let clampE (V3 x y z) = V3 (min (windowSize^._x) (max 0 x))
+                                 (min (windowSize^._y) (max 0 y))
+                                 (min (windowSize^._z) (max 0 z))
+          clampedPhis' = V.map (S.map clampE) phis'
+      writeIORef phisPtr clampedPhis'
 
       -- write out everything
       writeIteration dn i patches phis phis' errorInit errorA errorPhi
@@ -143,7 +147,7 @@ testPatch numPatches numPhi random = do
                                                       ,planeS (V3 2.5 2.5 2.5) (V3 0 1 (-1)) 64
                                                       ]
     let prefix = printf "data/test-patch-%d-phi-%d-random-%s/" numPatches numPhi (show random)
-    runTest prefix patches initialPhis random
+    runTest (V3 5 5 5) prefix patches initialPhis random
 
 
 testRealStuff fn ident numPatches numPhis = do
@@ -159,7 +163,7 @@ testRealStuff fn ident numPatches numPhis = do
     let getPatches = normalizePatches <$> selectPatches patchSize ws numPatches es
 
     let prefix = printf "data/test-patch-%d-phi-%d-fn-%s/" numPatches numPhis (ident::String)
-    runTest prefix getPatches initialPhis True
+    runTest ws prefix getPatches initialPhis True
 
 
 
