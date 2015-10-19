@@ -14,6 +14,9 @@ import           Linear
 import qualified Data.Vector.Storable as S
 
 import           Data.List
+import           Data.Foldable
+
+import           Control.Monad
 
 -------------------------------------------------
 --- V I S U A L I Z E   S P I K E   T R A I N ---
@@ -43,6 +46,34 @@ plotEvents' es = do
       area_spots_4d_values .= eventsTo4dPoints es
       area_spots_4d_palette .= brewerSet YlGn 9
       area_spots_4d_opacity .= 0.5
+
+---------------------------------------------------
+--- V I S U A L I Z E   S P I K E   T R A I N S ---
+---------------------------------------------------
+
+plotMoreEventsHelper es = layout
+  where plot = def & area_spots_4d_max_radius .~ 50
+                   & area_spots_4d_values     .~ eventsTo4dPoints es
+                   & area_spots_4d_palette    .~ brewerSet YlGn 9
+                   & area_spots_4d_opacity    .~ 0.5
+        layout = def & layout_plots .~ [toPlot plot]
+                     & layout_background .~ solidFillStyle (opaque white)
+                     & layout_foreground .~ opaque black
+                     & layout_x_axis . laxis_generate .~ scaledAxis def (0,5)
+                     & layout_y_axis . laxis_generate .~ scaledAxis def (0,5)
+
+plotMoreEvents fn es = void $ renderableToFile (def & fo_size .~ (800,length es * 600)) fn (plotMoreEvents' es)
+
+plotMoreEvents' es = renderStackedLayouts sls
+  where sls = def & slayouts_layouts         .~ map (StackedLayout . plotMoreEventsHelper) (toList es)
+                  & slayouts_compress_legend .~ True
+
+    {-let sls = map (StackedLayout . foobar) es-}
+
+    {-slayouts_layouts .= sls-}
+    {-slayouts_compress_legend .= True-}
+
+
 
 
 -----------------------------------------
