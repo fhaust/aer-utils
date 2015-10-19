@@ -172,8 +172,10 @@ testRealStuff fn ident numPatches numPhis = do
 writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
     savePatches (printf "%spatches%05d.bin" dn i) patches
     savePhis    (printf "%sphis%05d.bin" dn i) phis'
-    iforM_ phis' (\j phi -> plotEvents (printf "%sit-%05d-phi-%d.png" dn i j) phi)
-    iforM_ patches (\j patch -> plotEvents (printf "%sit-%05d-patch-%d.png" dn i j) patch)
+    {-iforM_ phis' (\j phi -> plotEvents (printf "%sit-%05d-phi-%d.png" dn i j) phi)-}
+    plotMoreEvents (printf "%sit-%05d-phis.png" dn i) phis'
+    {-iforM_ patches (\j patch -> plotEvents (printf "%sit-%05d-patch-%d.png" dn i j) patch)-}
+    plotMoreEvents (printf "%sit-%05d-patches.png" dn i) patches
     {-_ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'-}
     {-_ <-multiplotFileS (printf "%sit-p-%05d.png" dn i) (patches V.++ phis')-}
     {-_ <-multiplotFileS (printf "%sit-step-%05d.png" dn i) (phis V.++ phis')-}
