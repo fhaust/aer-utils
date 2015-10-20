@@ -33,6 +33,7 @@ import           Data.AffineSpace
 import           Data.IORef
 import           Data.List
 import           Data.Binary
+import           Data.Foldable
 
 import           Control.Monad
 import           Control.Monad.Random
@@ -167,39 +168,23 @@ testRealStuff fn ident numPatches numPhis = do
 
 
 
+writeIteration' :: FilePath -> Patches Double -> Phis Double -> IO ()
+writeIteration' fn patches phis = encodeFile fn (toList patches, toList phis)
+
+readIteration' :: FilePath -> IO (Patches Double, Phis Double)
+readIteration' fn = do
+    (patches,phis) <- decodeFile fn
+    return (V.fromList patches, V.fromList phis)
 
 
 writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
-    savePatches (printf "%spatches%05d.bin" dn i) patches
-    savePhis    (printf "%sphis%05d.bin" dn i) phis'
-    {-iforM_ phis' (\j phi -> plotEvents (printf "%sit-%05d-phi-%d.png" dn i j) phi)-}
+    writeIteration' (printf "%sit-%05d-data.bin"  dn i) patches phis'
     plotMoreEvents (printf "%sit-%05d-phis.png" dn i) phis'
-    {-iforM_ patches (\j patch -> plotEvents (printf "%sit-%05d-patch-%d.png" dn i j) patch)-}
     plotMoreEvents (printf "%sit-%05d-patches.png" dn i) patches
-    {-_ <-multiplotFileS (printf "%sit-%05d.png" dn i) phis'-}
-    {-_ <-multiplotFileS (printf "%sit-p-%05d.png" dn i) (patches V.++ phis')-}
-    {-_ <-multiplotFileS (printf "%sit-step-%05d.png" dn i) (phis V.++ phis')-}
-
-    -- process errors
-    let (il,ih,is) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorInit
-    let (al,ah,as) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorAs
-    let (pl,ph,ps) = V.foldl' (\(l,h,s) x -> (min l x, max h x, s + x)) (1/0,-1/0,0) errorPhis
-        im         = is / (fromIntegral $ V.length errorInit)
-        am         = as / (fromIntegral $ V.length errorAs)
-        pm         = ps / (fromIntegral $ V.length errorPhis)
-
-    appendFile (printf "%serrors.csv" dn) (printf "%d %f %f %f %f %f %f %f %f %f\n" i im il ih am al ah pm pl ph)
-
-    -- write phis in a format that gnuplot understands
-    iforM_ phis' $ \phiI phi -> do
-        let s = unlines . map (\(V3 x y z) -> printf "%f %f %f" x y z) . S.toList $ phi
-        writeFile (printf "%sphis/it-%05d-phi-%02d.csv" dn i phiI) s
-        writeFile (printf "%slast-phis/phi-%02d.csv" dn phiI) s
 
 
 readIteration dn i = do
-    patches <- loadPatches (printf "%spatches%05d.bin" dn i)
-    phis    <- loadPhis    (printf "%sphis%05d.bin" dn i)
+    (patches,phis) <- readIteration' (printf "%sit-%05d.bin" dn i)
     {-(errorInit, errorAs, errorPhis) <- read <$> readFile (printf "%serrors%05d.bin" dn i)-}
     return (patches, phis)
 
