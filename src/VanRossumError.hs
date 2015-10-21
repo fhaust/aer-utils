@@ -1,7 +1,7 @@
+{-# LANGUAGE BangPatterns #-}
 
 
-
-module VanRossumError where
+module VanRossumError (errorIntegral) where
 
 import           Numeric.LinearAlgebra
 import           Numeric.GSL.Integration
@@ -34,8 +34,8 @@ errorIntegral vs = pi**(3/2) * fstSum + 2*pi**(3/2) * sndSum
 mapSumPairs ::
   (Num a, S.Storable b) => (b -> b -> a) -> S.Vector b -> a
 mapSumPairs f = go
-  where go vs = S.foldl' (\acc v -> acc + f (S.head vs) v) 0 (S.tail vs)
-              + if S.length vs > 2 then go (S.tail vs) else 0
+  where go !vs = S.foldl' (\acc v -> acc + f (S.unsafeHead vs) v) 0 (S.unsafeTail vs)
+              + if S.length vs > 2 then go (S.unsafeTail vs) else 0
 {-# INLINABLE mapSumPairs #-}
 
 

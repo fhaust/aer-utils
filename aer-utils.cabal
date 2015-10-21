@@ -71,8 +71,8 @@ executable learngabors
   ghc-options:         -Wall 
                        -funbox-strict-fields
                        -fexcess-precision
-                       ---fllvm 
-                       ---optlo-O3 -optlc-O3 -optlo-mem2reg
+                       -fllvm 
+                       -optlo-O3 -optlc-O3 -optlo-mem2reg
                        -O2
                        -threaded 
                        -rtsopts 
