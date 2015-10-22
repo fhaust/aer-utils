@@ -1,12 +1,12 @@
 {-# LANGUAGE BangPatterns #-}
 
 
-module VanRossumError (errorIntegral) where
+module VanRossumError (errorIntegral, numericErrorIntegral) where
 
 import           Numeric.LinearAlgebra
 import           Numeric.GSL.Integration
 import           Linear
-{-import           Numeric.FastMath() -- imports some optimization rules-}
+import           Numeric.FastMath
 
 import qualified Data.Vector.Storable as S
 

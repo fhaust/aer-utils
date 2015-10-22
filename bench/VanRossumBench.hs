@@ -24,8 +24,16 @@ benchVanRossumErrors es =
        bench "analytical integral" $ nf errorIntegral es
       ]
 
+benchNumericVanRossumErrors es =
+    bgroup ("Numeric Van Rossum Error (n = " ++ show (S.length es) ++ ")")
+      [-- bench "numerical integral" $ nf numericErrorIntegral es
+       bench "numerical integral" $ nf numericErrorIntegral es
+      ]
+
 
 main = do
+    -- seed RNG
+    setStdGen (mkStdGen 0)
     -- generate random events
     es  <- randomEvents 128
     let es0 = S.force $ S.take 4 es
@@ -37,9 +45,13 @@ main = do
 
     defaultMain 
       [ benchVanRossumErrors es0
+      , benchNumericVanRossumErrors es0
       , benchVanRossumErrors es1
+      , benchNumericVanRossumErrors es1
       , benchVanRossumErrors es2
+      , benchNumericVanRossumErrors es2
       , benchVanRossumErrors es3
+      , benchNumericVanRossumErrors es3
       , benchVanRossumErrors es4
       , benchVanRossumErrors es5
       ]
