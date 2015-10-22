@@ -133,6 +133,7 @@ plotReconstructionError fn before after = toFile def fn $ do
     {-  plot_candle_centre .= 1-}
 
 
-stats es = (minimum es, ses !! f, ses !! (2*f), ses !! (3*f), maximum es)
+stats es = (minimum es, ses !! f, mean es, ses !! (3*f), maximum es)
     where ses = sort es
           f   = length es `div` 4
+          mean xs = sum xs / fromIntegral (length xs)
