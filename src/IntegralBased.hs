@@ -16,7 +16,7 @@ import           Control.Parallel.Strategies
 
 import qualified Numeric.LinearAlgebra as LA
 import           Numeric.GSL.Minimization
-import           Numeric.FastMath()
+{-import           Numeric.FastMath()-}
 
 {-import           GHC.Conc (numCapabilities)-}
 
