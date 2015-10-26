@@ -63,8 +63,8 @@ main = do
                 ]
 
     -- execute and wait for results
-    asyncs <- sequence $ map async tests
-    sequence_ $ map wait asyncs
+    asyncs <- mapM async tests
+    mapM_ wait asyncs
 
 
     putStrLn "done"
@@ -138,9 +138,9 @@ randomPlaneS num = S.fromList <$> randomPlane num
 testPatch numPatches numPhi random = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 16
-                                         $ (V3 <$> getRandomR (0,5)
-                                               <*> getRandomR (0,5)
-                                               <*> getRandomR (0,5)) :: IO (Phis Double)
+                                          (V3 <$> getRandomR (0,5)
+                                              <*> getRandomR (0,5)
+                                              <*> getRandomR (0,5)) :: IO (Phis Double)
 
     let patches = V.sequence $ V.fromListN numPatches [planeS (V3 2.5 2.5 2.5) (V3 1 0 1) 64
                                                       ,planeS (V3 2.5 2.5 2.5) (V3 0 1 1) 64
@@ -184,9 +184,12 @@ writeIteration dn i patches phis phis' errorInit errorAs errorPhis = do
 
 
 readIteration dn i = do
-    (patches,phis) <- readIteration' (printf "%sit-%05d.bin" dn i)
-    {-(errorInit, errorAs, errorPhis) <- read <$> readFile (printf "%serrors%05d.bin" dn i)-}
+    (patches,phis) <- readIteration' (printf "%sit-%05d-data.bin" dn i)
     return (patches, phis)
+
+readIterations dn = do
+    fns <- sort . filter ("it-" `isPrefixOf`) <$> getDirectoryContents dn
+    mapM (\fn -> readIteration' (dn ++ "/" ++ fn)) fns
 
 
 
@@ -222,14 +225,14 @@ convertToV3 (DVS.Event (DVS.Address DVS.U x y) t) = Just (V3 (fromIntegral x) (f
 convertToV3 _                                     = Nothing
 
 convertToV3s :: S.Vector (DVS.Event DVS.Address) -> S.Vector (V3 Double)
-convertToV3s = S.fromList . catMaybes . map convertToV3 . S.toList
+convertToV3s = S.fromList . mapMaybes convertToV3 . S.toList
 
 sliceSpaceTimeWindow (V3 lx ly lt) (V3 hx hy ht) = S.filter go . sliceTimeWindow lt ht
   where go (V3 x y t) =  x >= lx && x <= hx
                       && y >= ly && y <= hy
 
 sliceTimeWindow :: Double -> Double -> S.Vector (V3 Double) -> S.Vector (V3 Double)
-sliceTimeWindow lt ht es = S.slice (li) (hi - li) es
+sliceTimeWindow lt ht es = S.slice li (hi - li) es
     where bs x = binarySearch (compare `on` view _t) es (V3 0 0 x)
           li   = bs lt
           hi   = bs ht
