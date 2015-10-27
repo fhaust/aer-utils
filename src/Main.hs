@@ -60,7 +60,7 @@ main = do
                 {-,testRealStuff "../common/ori-dir-stimulus-slice.aedat" "grid" 9 2-}
                 {-,testRealStuff "../common/ori-dir-stimulus-hor-line-slice.aedat" "horline" 9 2-}
                 testRealStuff "../common/ori-dir-stimulus-hor-line-and-back.aedat" "horline-and-back" 9 2
-                ]
+                ] :: [IO ()]
 
     -- execute and wait for results
     asyncs <- mapM async tests
@@ -135,20 +135,22 @@ planeS o n num = S.fromList <$> plane o n num
 randomPlaneS num = S.fromList <$> randomPlane num
 
 
-testPatch numPatches numPhi random = do
+testPatch numFeatures numPatches numPhi random = do
 
     initialPhis  <- V.replicateM numPhi $ S.replicateM 16
                                           (V3 <$> getRandomR (0,5)
                                               <*> getRandomR (0,5)
                                               <*> getRandomR (0,5)) :: IO (Phis Double)
 
-    let patches = V.sequence $ V.fromListN numPatches [planeS (V3 2.5 2.5 2.5) (V3 1 0 1) 64
-                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 1 1) 64
-                                                      ,planeS (V3 2.5 2.5 2.5) (V3 1 0 (-1)) 64
-                                                      ,planeS (V3 2.5 2.5 2.5) (V3 0 1 (-1)) 64
-                                                      ]
+    let patches = take numFeatures [planeS (V3 2.5 2.5 2.5) (V3 1 0 1) 64
+                                   ,planeS (V3 2.5 2.5 2.5) (V3 0 1 1) 64
+                                   ,planeS (V3 2.5 2.5 2.5) (V3 1 0 (-1)) 64
+                                   ,planeS (V3 2.5 2.5 2.5) (V3 0 1 (-1)) 64
+                                   ]
+    let getPatches = V.replicateM numPatches (join (uniform patches))
+  
     let prefix = printf "data/test-patch-%d-phi-%d-random-%s/" numPatches numPhi (show random)
-    runTest (V3 5 5 5) prefix patches initialPhis random
+    runTest (V3 5 5 5) prefix getPatches initialPhis random
 
 
 testRealStuff fn ident numPatches numPhis = do
@@ -225,7 +227,7 @@ convertToV3 (DVS.Event (DVS.Address DVS.U x y) t) = Just (V3 (fromIntegral x) (f
 convertToV3 _                                     = Nothing
 
 convertToV3s :: S.Vector (DVS.Event DVS.Address) -> S.Vector (V3 Double)
-convertToV3s = S.fromList . mapMaybes convertToV3 . S.toList
+convertToV3s = S.fromList . mapMaybe convertToV3 . S.toList
 
 sliceSpaceTimeWindow (V3 lx ly lt) (V3 hx hy ht) = S.filter go . sliceTimeWindow lt ht
   where go (V3 x y t) =  x >= lx && x <= hx

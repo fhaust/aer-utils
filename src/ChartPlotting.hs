@@ -29,7 +29,9 @@ eventTo4dPoint (V3 x y t) = (x,y,0.1,t)
 eventsTo4dPoints es = map eventTo4dPoint $ S.toList es
 
 plotEvents :: FilePath -> Events -> IO ()
-plotEvents fn es = toFile def fn $ plotEvents' es 
+plotEvents fn es = toFile opts fn $ plotEvents' es 
+  where opts = def & fo_format .~ PDF
+                   & fo_size .~ (400,300)
 
 plotEvents' :: Events -> EC (Layout Double Double) ()
 plotEvents' es = do
@@ -39,12 +41,14 @@ plotEvents' es = do
     {-layout_left_axis_visibility . axis_show_ticks .= False-}
     layout_x_axis . laxis_generate .= scaledAxis def (0,5)
     layout_y_axis . laxis_generate .= scaledAxis def (0,5)
+    {-layout_x_axis . layout_left_axis_visibility .= False-}
+    {-layout_y_axis . layout_left_axis_visibility .= False-}
 
     plot $ liftEC $ do
       {-area_spots_4d_title .= "title"-}
       area_spots_4d_max_radius .= 50
       area_spots_4d_values .= eventsTo4dPoints es
-      area_spots_4d_palette .= brewerSet YlGn 9
+      area_spots_4d_palette .= drop 2 (brewerSet YlGn 9)
       area_spots_4d_opacity .= 0.5
 
 ---------------------------------------------------
