@@ -90,8 +90,10 @@ plotMoreEvents' es = renderStackedLayouts sls
 --- E R R O R   P L O T S ---
 -----------------------------
 
-plotReconstructionError fn before after = toFile def fn $ do
-    layout_title      .= "reconstruction error after iteration"
+plotReconstructionError fn before after = toFile def fn $ plotReconstructionError' fn after
+
+plotReconstructionError' fn after = do
+    -- layout_title      .= "reconstruction error after iteration"
     layout_background .= solidFillStyle (opaque white)
     layout_foreground .= opaque black
     layout_x_axis . laxis_title .= "iterations"

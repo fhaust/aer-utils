@@ -10,6 +10,7 @@ module Main where
 import           IntegralBased
 import           ArtificialData
 import           Types
+import           Common
 import           Linear
 import           ChartPlotting
 
@@ -42,6 +43,9 @@ import           Control.Concurrent
 import           Control.Concurrent.Async
 
 import           Debug.Trace
+
+import           Graphics.Rendering.Chart.Easy
+import           Graphics.Rendering.Chart.Backend.Cairo
 
 _t = _z
 
@@ -190,7 +194,7 @@ readIteration dn i = do
     return (patches, phis)
 
 readIterations dn = do
-    fns <- sort . filter ("it-" `isPrefixOf`) <$> getDirectoryContents dn
+    fns <- sort . filter ("data.bin" `isSuffixOf`) <$> getDirectoryContents dn
     mapM (\fn -> readIteration' (dn ++ "/" ++ fn)) fns
 
 
@@ -269,3 +273,16 @@ loadDataset dn = do
     phis <- mapM (\n -> loadPhis $ dn ++ "/" ++ n) phiNames
 
     return (patch,phis)
+
+
+----------------
+
+rerror patch phis = reconstructionError patch phis as
+    where as = gradientDescentToFindAs patch phis (S.replicate (length phis) 1)
+
+plotReconstructionErrors dn to = do
+    is <- readIterations dn
+    let es = map (\(patches,phis) -> V.toList $ V.map (\patch -> rerror patch phis) patches) is
+    toFile (def & fo_size .~ (400,300) & fo_format .~ PDF) to 
+      (plotReconstructionError' to es)
+
